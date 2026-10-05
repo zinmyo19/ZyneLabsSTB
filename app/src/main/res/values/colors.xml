@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ZyneLabs brand colors -->
+    <color name="teal">#00E5CC</color>
+    <color name="background">#0B141F</color>
+    <color name="surface">#14202E</color>
+    <color name="surface_focused">#1A2A3A</color>
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#B0BEC5</color>
+    <color name="ic_launcher_background">#0B141F</color>
+</resources>

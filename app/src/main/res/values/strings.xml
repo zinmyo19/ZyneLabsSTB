@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ZyneLabs STB</string>
+
+    <string name="settings_title">Portal Settings</string>
+    <string name="portal_url_label">Stalker Portal URL</string>
+    <string name="portal_url_hint">http://example.com:8080/c</string>
+    <string name="mac_label">Box MAC Address</string>
+    <string name="mac_hint">00:1A:79:XX:XX:XX</string>
+    <string name="connect">Connect</string>
+
+    <string name="status_connecting">Connecting to portal…</string>
+
+    <string name="error_invalid_url">Enter a valid portal URL starting with http:// or https://</string>
+    <string name="error_invalid_mac">Enter a valid MAC address (XX:XX:XX:XX:XX:XX)</string>
+    <string name="error_connect_failed">Connection failed: %1$s</string>
+    <string name="error_load_failed">Could not load channels: %1$s</string>
+    <string name="error_no_channels">No channels found on this portal.</string>
+    <string name="error_stream_failed">Could not play stream: %1$s</string>
+    <string name="unknown_channel">Unknown channel</string>
+    <string name="retry">Retry</string>
+</resources>
