@@ -14,7 +14,8 @@
         android:label="@string/app_name"
         android:theme="@style/Theme.ZyneLabsSTB"
         android:banner="@drawable/banner"
-        android:supportsRtl="true">
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".MainActivity"
