@@ -15,8 +15,21 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
 
+    companion object {
+        /** When true, always show the portal form (used from Settings). */
+        const val EXTRA_SETUP = "setup"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Already configured? Go straight to the home carousel.
+        if (!intent.getBooleanExtra(EXTRA_SETUP, false) && Prefs.isConfigured(this)) {
+            startActivity(Intent(this, HomeActivity::class.java))
+            finish()
+            return
+        }
+
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -53,7 +66,8 @@ class MainActivity : AppCompatActivity() {
                 )
                 api.handshake()
                 api.getProfile() // validates the session works
-                startActivity(Intent(this@MainActivity, ChannelListActivity::class.java))
+                startActivity(Intent(this@MainActivity, HomeActivity::class.java))
+                finish()
                 binding.tvStatus.text = ""
             } catch (e: Exception) {
                 binding.tvStatus.text =
