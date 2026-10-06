@@ -11,27 +11,60 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import com.zynelabs.stb.databinding.ActivityChannelListBinding
+import com.zynelabs.stb.databinding.ActivityChannelsBinding
 import com.zynelabs.stb.databinding.ItemChannelBinding
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
- * Channel list: D-pad navigable RecyclerView (name + number).
- * DPAD_CENTER / OK on a focused item opens the player.
+ * TV channel list with numbers + side EPG panel (STBEmu-style).
+ * D-pad: UP/DOWN moves, OK opens the player. Focusing a channel loads
+ * its EPG (now/next) into the side panel — best-effort, never crashes.
  */
 class ChannelListActivity : AppCompatActivity() {
 
-    private lateinit var binding: ActivityChannelListBinding
-    private val adapter = ChannelAdapter { channel -> openPlayer(channel) }
+    private lateinit var binding: ActivityChannelsBinding
+    private var epgJob: Job? = null
+
+    private val adapter = ChannelAdapter(
+        onClick = { channel -> openPlayer(channel) },
+        onFocus = { channel -> loadEpgPanel(channel) }
+    )
+
+    companion object {
+        const val EXTRA_GENRE_ID = "genre_id"
+        const val EXTRA_GENRE_TITLE = "genre_title"
+
+        fun todayString(): String =
+            SimpleDateFormat("dd-MM-yyyy", Locale.US).format(Date())
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityChannelListBinding.inflate(layoutInflater)
+        binding = ActivityChannelsBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        val genreTitle = intent.getStringExtra(EXTRA_GENRE_TITLE)
+            .orEmpty().ifBlank { getString(R.string.all_channels) }
+        binding.tvTitle.text = genreTitle
 
         binding.recyclerView.layoutManager = LinearLayoutManager(this)
         binding.recyclerView.adapter = adapter
         binding.btnRetry.setOnClickListener { loadChannels() }
+        binding.btnGuide.setOnClickListener {
+            startActivity(
+                Intent(this, GuideActivity::class.java)
+                    .putExtra(
+                        GuideActivity.EXTRA_GENRE_ID,
+                        intent.getStringExtra(EXTRA_GENRE_ID)
+                    )
+                    .putExtra(GuideActivity.EXTRA_GENRE_TITLE, genreTitle)
+            )
+        }
 
         loadChannels()
     }
@@ -47,10 +80,15 @@ class ChannelListActivity : AppCompatActivity() {
                     Prefs.getPortalUrl(this@ChannelListActivity),
                     Prefs.getMac(this@ChannelListActivity)
                 )
-                val channels = api.getAllChannels()
+                var channels = api.getAllChannels()
+                val genreId = intent.getStringExtra(EXTRA_GENRE_ID)
+                if (!genreId.isNullOrEmpty()) {
+                    channels = channels.filter { it.genreId == genreId }
+                }
                 adapter.submitList(channels) {
                     if (channels.isNotEmpty()) {
                         binding.recyclerView.requestFocus()
+                        loadEpgPanel(channels[0])
                     }
                 }
                 if (channels.isEmpty()) {
@@ -71,18 +109,58 @@ class ChannelListActivity : AppCompatActivity() {
         binding.btnRetry.requestFocus()
     }
 
+    /** Loads now/next EPG for the focused channel into the side panel. */
+    private fun loadEpgPanel(channel: Channel) {
+        epgJob?.cancel()
+        binding.tvEpgChannel.text = channel.name
+        binding.tvEpgNow.text = getString(R.string.epg_loading)
+        binding.tvEpgNext.text = ""
+        binding.tvEpgDesc.text = ""
+        epgJob = lifecycleScope.launch {
+            delay(350) // debounce fast D-pad scrolling
+            try {
+                val api = StalkerApi(
+                    Prefs.getPortalUrl(this@ChannelListActivity),
+                    Prefs.getMac(this@ChannelListActivity)
+                )
+                val programs = api.getEpg(channel.id, todayString())
+                if (programs.isEmpty()) {
+                    binding.tvEpgNow.text = getString(R.string.epg_none)
+                    return@launch
+                }
+                val now = programs.getOrNull(0)
+                val next = programs.getOrNull(1)
+                binding.tvEpgNow.text = getString(
+                    R.string.epg_now, now?.name.orEmpty()
+                )
+                binding.tvEpgNext.text = if (next != null) {
+                    getString(R.string.epg_next, next.name)
+                } else {
+                    ""
+                }
+                binding.tvEpgDesc.text = now?.descr.orEmpty()
+            } catch (e: Exception) {
+                binding.tvEpgNow.text = getString(R.string.epg_none)
+                binding.tvEpgNext.text = ""
+                binding.tvEpgDesc.text = ""
+            }
+        }
+    }
+
     private fun openPlayer(channel: Channel) {
         startActivity(
             Intent(this, PlayerActivity::class.java)
                 .putExtra(PlayerActivity.EXTRA_CMD, channel.cmd)
                 .putExtra(PlayerActivity.EXTRA_NAME, channel.name)
+                .putExtra(PlayerActivity.EXTRA_CMD_TYPE, PlayerActivity.TYPE_ITV)
         )
     }
 
     // ------------------------------------------------------------ adapter
 
     private class ChannelAdapter(
-        private val onClick: (Channel) -> Unit
+        private val onClick: (Channel) -> Unit,
+        private val onFocus: (Channel) -> Unit
     ) : ListAdapter<Channel, ChannelAdapter.ViewHolder>(DIFF) {
 
         companion object {
@@ -106,6 +184,15 @@ class ChannelListActivity : AppCompatActivity() {
                         onClick(getItem(position))
                     }
                 }
+                binding.root.onFocusChangeListener =
+                    android.view.View.OnFocusChangeListener { _, hasFocus ->
+                        if (hasFocus) {
+                            val position = bindingAdapterPosition
+                            if (position != RecyclerView.NO_POSITION) {
+                                onFocus(getItem(position))
+                            }
+                        }
+                    }
             }
 
             fun bind(channel: Channel) {
