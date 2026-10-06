@@ -75,7 +75,7 @@ class VodBrowserActivity : AppCompatActivity() {
                     Prefs.getPortalUrl(this@VodBrowserActivity),
                     Prefs.getMac(this@VodBrowserActivity)
                 )
-                val rows: List<RowAdapter.RowItem>
+                val rows: List<RowItem>
                 val catId = categoryId
                 if (catId == null) {
                     var cats = api.getVodCategories()
@@ -83,12 +83,12 @@ class VodBrowserActivity : AppCompatActivity() {
                         val filtered = cats.filter { looksLikeSeries(it.title) }
                         if (filtered.isNotEmpty()) cats = filtered
                     }
-                    rows = cats.map { RowAdapter.RowItem(it.id, it.title) }
+                    rows = cats.map { RowItem(it.id, it.title) }
                 } else {
                     val items = api.getVodList(catId)
                     cmdById.clear()
                     for (it in items) cmdById[it.id] = it.cmd
-                    rows = items.map { RowAdapter.RowItem(it.id, it.name) }
+                    rows = items.map { RowItem(it.id, it.name) }
                 }
                 adapter.submitList(rows) {
                     if (rows.isNotEmpty()) binding.recyclerView.requestFocus()
