@@ -54,10 +54,10 @@ class GroupsActivity : AppCompatActivity() {
                     Prefs.getMac(this@GroupsActivity)
                 )
                 val genres = api.getGenres()
-                val rows = ArrayList<RowAdapter.RowItem>(genres.size + 1)
-                rows.add(RowAdapter.RowItem(ALL_ID, getString(R.string.all_channels)))
+                val rows = ArrayList<RowItem>(genres.size + 1)
+                rows.add(RowItem(ALL_ID, getString(R.string.all_channels)))
                 for (g in genres) {
-                    rows.add(RowAdapter.RowItem(g.id, g.title))
+                    rows.add(RowItem(g.id, g.title))
                 }
                 adapter.submitList(rows) {
                     if (rows.isNotEmpty()) binding.recyclerView.requestFocus()
@@ -65,7 +65,7 @@ class GroupsActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 // Genre fetch failed: still offer the unfiltered channel list.
                 adapter.submitList(
-                    listOf(RowAdapter.RowItem(ALL_ID, getString(R.string.all_channels)))
+                    listOf(RowItem(ALL_ID, getString(R.string.all_channels)))
                 )
                 binding.tvError.text =
                     getString(R.string.error_load_failed, e.message.orEmpty())
