@@ -11,11 +11,12 @@ import com.zynelabs.stb.databinding.ItemRowBinding
  * Generic single-line row adapter (title + optional value).
  * Rows are focusable for D-pad; OK/click triggers [onClick].
  */
+/** Item for [RowAdapter]: stable id + title + optional trailing value. */
+data class RowItem(val id: String, val title: String, val value: String = "")
+
 class RowAdapter(
     private val onClick: (RowItem) -> Unit
 ) : ListAdapter<RowItem, RowAdapter.ViewHolder>(DIFF) {
-
-    data class RowItem(val id: String, val title: String, val value: String = "")
 
     companion object {
         val DIFF = object : DiffUtil.ItemCallback<RowItem>() {
