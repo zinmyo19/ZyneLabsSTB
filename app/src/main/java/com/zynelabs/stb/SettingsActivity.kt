@@ -44,34 +44,34 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun refresh() {
         val rows = listOf(
-            RowAdapter.RowItem(
+            RowItem(
                 ID_ASPECT,
                 getString(R.string.setting_aspect),
                 Prefs.getAspectRatio(this)
             ),
-            RowAdapter.RowItem(
+            RowItem(
                 ID_PLAYER,
                 getString(R.string.setting_player),
                 getString(R.string.player_exo)
             ),
-            RowAdapter.RowItem(
+            RowItem(
                 ID_SUBTITLES,
                 getString(R.string.setting_subtitles),
                 getString(
                     if (Prefs.getSubtitlesEnabled(this)) R.string.on else R.string.off
                 )
             ),
-            RowAdapter.RowItem(
+            RowItem(
                 ID_AUDIO,
                 getString(R.string.setting_audio_lang),
                 Prefs.getAudioLangLabel(this)
             ),
-            RowAdapter.RowItem(
+            RowItem(
                 ID_PORTAL,
                 getString(R.string.setting_portal),
                 Prefs.getMac(this)
             ),
-            RowAdapter.RowItem(
+            RowItem(
                 ID_VERSION,
                 getString(R.string.setting_version),
                 BuildConfig.VERSION_NAME
