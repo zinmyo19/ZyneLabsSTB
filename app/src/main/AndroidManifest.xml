@@ -14,8 +14,7 @@
         android:label="@string/app_name"
         android:theme="@style/Theme.ZyneLabsSTB"
         android:banner="@drawable/banner"
-        android:supportsRtl="true"
-        android:usesCleartextTraffic="true">
+        android:supportsRtl="true">
 
         <activity
             android:name=".MainActivity"
@@ -31,7 +30,31 @@
         </activity>
 
         <activity
+            android:name=".HomeActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".GroupsActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".ChannelListActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".GuideActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".VodBrowserActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".RadioActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".SettingsActivity"
             android:exported="false" />
 
         <activity
