@@ -66,7 +66,7 @@ class RadioActivity : AppCompatActivity() {
                 }
                 cmdById.clear()
                 for (s in stations) cmdById[s.id] = s.cmd
-                val rows = stations.map { RowAdapter.RowItem(it.id, it.name) }
+                val rows = stations.map { RowItem(it.id, it.name) }
                 adapter.submitList(rows) {
                     if (rows.isNotEmpty()) binding.recyclerView.requestFocus()
                 }
