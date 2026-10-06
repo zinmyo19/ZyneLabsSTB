@@ -159,9 +159,11 @@ class StalkerApi(portalUrl: String, private val mac: String) {
     /**
      * Resolves a channel [cmd] into a playable stream URL.
      * Strips the "ffmpeg "/"ffprobe " transport prefix when present.
+     *
+     * @param type "itv" for live TV, "vod" for video club items
      */
-    suspend fun createLink(cmd: String): String = withSession {
-        val js = jsPayload(get("itv", "create_link", mapOf("cmd" to cmd)))
+    suspend fun createLink(cmd: String, type: String = "itv"): String = withSession {
+        val js = jsPayload(get(type, "create_link", mapOf("cmd" to cmd)))
         var link = js.optString("cmd", "").trim()
         if (link.isBlank()) {
             throw StalkerException("Portal returned no stream URL")
@@ -173,6 +175,103 @@ class StalkerApi(portalUrl: String, private val mac: String) {
             }
         }
         link
+    }
+
+    // -------------------------------------------------------------- genres
+
+    /** TV genre/category (e.g. "Sports", "Movies"). */
+    data class Genre(val id: String, val title: String)
+
+    /** Returns TV genres from the portal. Empty list when unsupported. */
+    suspend fun getGenres(): List<Genre> = withSession {
+        val js = jsPayload(get("itv", "get_genres"))
+        val data = js.optJSONArray("data") ?: return@withSession emptyList()
+        val list = ArrayList<Genre>(data.length())
+        for (i in 0 until data.length()) {
+            val o = data.getJSONObject(i)
+            val title = o.optString("title").ifBlank { o.optString("name") }
+            if (title.isNotBlank()) {
+                list.add(Genre(id = o.optString("id"), title = title))
+            }
+        }
+        list
+    }
+
+    // ----------------------------------------------------------------- EPG
+
+    /** A single EPG program entry. Times are display strings from the portal. */
+    data class EpgProgram(
+        val name: String,
+        val start: String,
+        val end: String,
+        val descr: String
+    )
+
+    /**
+     * Returns EPG entries for a channel on [date] (format dd-MM-yyyy).
+     * Best-effort: returns an empty list when the portal does not support it.
+     */
+    suspend fun getEpg(chId: String, date: String): List<EpgProgram> = withSession {
+        val js = jsPayload(
+            get("itv", "get_epg", mapOf("ch_id" to chId, "date" to date))
+        )
+        val data = js.optJSONArray("data") ?: return@withSession emptyList()
+        val list = ArrayList<EpgProgram>(data.length())
+        for (i in 0 until data.length()) {
+            val o = data.getJSONObject(i)
+            val name = o.optString("name").trim()
+            if (name.isEmpty()) continue
+            list.add(
+                EpgProgram(
+                    name = name,
+                    start = o.optString("start").ifBlank { o.optString("t_time") },
+                    end = o.optString("end").ifBlank { o.optString("t_time_to") },
+                    descr = o.optString("descr").ifBlank { o.optString("description") }
+                )
+            )
+        }
+        list
+    }
+
+    // ----------------------------------------------------------------- VOD
+
+    /** A VOD category (movies, series, …). */
+    data class VodCategory(val id: String, val title: String)
+
+    /** A single VOD item (movie / episode). */
+    data class VodItem(val id: String, val name: String, val cmd: String)
+
+    /** Returns VOD categories. Empty list when unsupported. */
+    suspend fun getVodCategories(): List<VodCategory> = withSession {
+        val js = jsPayload(get("vod", "get_categories"))
+        val data = js.optJSONArray("data") ?: return@withSession emptyList()
+        val list = ArrayList<VodCategory>(data.length())
+        for (i in 0 until data.length()) {
+            val o = data.getJSONObject(i)
+            val title = o.optString("title").ifBlank { o.optString("name") }
+            if (title.isNotBlank()) {
+                list.add(VodCategory(id = o.optString("id"), title = title))
+            }
+        }
+        list
+    }
+
+    /** Returns VOD items inside a category. Empty list when unsupported. */
+    suspend fun getVodList(categoryId: String): List<VodItem> = withSession {
+        val js = jsPayload(
+            get("vod", "get_ordered_list", mapOf("category" to categoryId, "p" to "1"))
+        )
+        val data = js.optJSONArray("data") ?: return@withSession emptyList()
+        val list = ArrayList<VodItem>(data.length())
+        for (i in 0 until data.length()) {
+            val o = data.getJSONObject(i)
+            val name = o.optString("name").trim()
+            val cmd = o.optString("cmd").trim()
+            if (name.isNotEmpty() && cmd.isNotEmpty()) {
+                list.add(VodItem(id = o.optString("id"), name = name, cmd = cmd))
+            }
+        }
+        list
     }
 
     // ------------------------------------------------------------ cookie jar
