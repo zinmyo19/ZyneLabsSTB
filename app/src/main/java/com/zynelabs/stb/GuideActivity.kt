@@ -1,6 +1,7 @@
 package com.zynelabs.stb
 
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
@@ -140,18 +141,16 @@ class GuideActivity : AppCompatActivity() {
 
     data class GuideRow(val channel: Channel, val date: String)
 
+    private val guideDiff = object : DiffUtil.ItemCallback<GuideRow>() {
+        override fun areItemsTheSame(old: GuideRow, new: GuideRow): Boolean =
+            old.channel.id == new.channel.id && old.date == new.date
+
+        override fun areContentsTheSame(old: GuideRow, new: GuideRow): Boolean =
+            old == new
+    }
+
     private inner class GuideAdapter :
-        ListAdapter<GuideRow, GuideAdapter.ViewHolder>(DIFF) {
-
-        companion object {
-            val DIFF = object : DiffUtil.ItemCallback<GuideRow>() {
-                override fun areItemsTheSame(old: GuideRow, new: GuideRow): Boolean =
-                    old.channel.id == new.channel.id && old.date == new.date
-
-                override fun areContentsTheSame(old: GuideRow, new: GuideRow): Boolean =
-                    old == new
-            }
-        }
+        ListAdapter<GuideRow, GuideAdapter.ViewHolder>(guideDiff) {
 
         inner class ViewHolder(
             private val binding: ItemGuideRowBinding
