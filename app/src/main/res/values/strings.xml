@@ -19,4 +19,35 @@
     <string name="error_stream_failed">Could not play stream: %1$s</string>
     <string name="unknown_channel">Unknown channel</string>
     <string name="retry">Retry</string>
+
+    <string name="home_portal_info">Portal MAC: %1$s</string>
+
+    <string name="section_tv">TV</string>
+    <string name="section_videoclub">Video Club</string>
+    <string name="section_series">TV Series</string>
+    <string name="section_radio">Radio</string>
+    <string name="section_settings">Settings</string>
+
+    <string name="tv_groups">TV Groups</string>
+    <string name="all_channels">All Channels</string>
+    <string name="tv_guide">TV Guide</string>
+    <string name="today">Today</string>
+
+    <string name="epg_loading">Loading program info…</string>
+    <string name="epg_none">No program info</string>
+    <string name="epg_now">Now: %1$s</string>
+    <string name="epg_next">Next: %1$s</string>
+
+    <string name="setting_aspect">Aspect ratio</string>
+    <string name="setting_player">Media player</string>
+    <string name="player_exo">ExoPlayer</string>
+    <string name="setting_subtitles">Subtitles</string>
+    <string name="setting_audio_lang">Audio language</string>
+    <string name="setting_portal">Portal settings</string>
+    <string name="setting_version">Version</string>
+    <string name="on">On</string>
+    <string name="off">Off</string>
+
+    <string name="error_no_vod">No videos found in this section.</string>
+    <string name="error_no_radio">No radio stations found on this portal.</string>
 </resources>
