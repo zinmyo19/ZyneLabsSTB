@@ -47,10 +47,12 @@ class StalkerApi(portalUrl: String, private val mac: String) {
             cookieJar.seed(
                 portalHttp,
                 listOf(
-                    Cookie.Builder().name("mac").value(mac).url(portalHttp).build(),
-                    Cookie.Builder().name("stb_lang").value("en").url(portalHttp).build(),
+                    Cookie.Builder().name("mac").value(mac)
+                        .domain(portalHttp.host).path("/").build(),
+                    Cookie.Builder().name("stb_lang").value("en")
+                        .domain(portalHttp.host).path("/").build(),
                     Cookie.Builder().name("timezone").value("Asia/Kuala_Lumpur")
-                        .url(portalHttp).build()
+                        .domain(portalHttp.host).path("/").build()
                 )
             )
         }
