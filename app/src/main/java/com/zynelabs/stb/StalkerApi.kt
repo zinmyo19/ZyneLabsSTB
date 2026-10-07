@@ -53,6 +53,12 @@ import kotlinx.coroutines.delay
  * cookie-bound). The first method yielding a valid profile id is cached.
  * "MAC not registered" fires only when all four fail. handshake() logs
  * its raw response (first 500 chars) for token-shape diagnostics.
+ *
+ * v3.6: Copy Debug Info now also captures the FIRST get_profile request
+ * in full (URL, redacted headers, HTTP code, body) — v3.5 proved the
+ * handshake succeeds and headers are clean, but get_profile still
+ * returns empty for all four auth methods; the wire details of that
+ * first (Bearer) attempt are what we need to diagnose next.
  */
 class StalkerApi(
     portalUrl: String,
@@ -130,16 +136,29 @@ class StalkerApi(
         private set
     @Volatile var debugHandshakeResponse: String? = null
         private set
-    @Volatile var debugProfileResponse: String? = null
+
+    /**
+     * v3.6: get_profile request diagnostics (FIRST attempt only — the
+     * Bearer attempt, the standard wire format). Captured in [get] before
+     * any success/empty-body check so we see the HTTP code and body even
+     * when the portal returns 200-with-empty (the "MAC not registered"
+     * false-positive shape). Redacted token — safe to paste in chat.
+     */
+    @Volatile var debugProfileUrl: String? = null
+        private set
+    @Volatile var debugProfileHeaders: String? = null
+        private set
+    @Volatile var debugProfileHttpCode: Int? = null
+        private set
+    @Volatile var debugProfileBody: String? = null
         private set
 
     /** v3.4: one-line redacted header dump for Copy Debug Info. */
-    private fun debugHeaderDump(): String {
+    private fun debugHeaderDump(headers: okhttp3.Headers = buildHeaders()): String {
         val sb = StringBuilder()
-        val h = buildHeaders()
-        for (i in 0 until h.size) {
-            val name = h.name(i)
-            var value = h.value(i)
+        for (i in 0 until headers.size) {
+            val name = headers.name(i)
+            var value = headers.value(i)
             if (name.equals("Authorization", ignoreCase = true)) {
                 value = "Bearer <redacted>"
             }
@@ -172,8 +191,11 @@ class StalkerApi(
         sb.appendLine("Handshake response (1000 chars):")
         sb.appendLine(debugHandshakeResponse ?: "(none yet)")
         sb.appendLine()
-        sb.appendLine("Last get_profile response (1000 chars):")
-        sb.appendLine(debugProfileResponse ?: "(none yet)")
+        sb.appendLine("Get Profile Request (first attempt):")
+        sb.appendLine("URL: ${debugProfileUrl ?: "(none yet)"}")
+        sb.appendLine("Headers: ${debugProfileHeaders ?: "(none yet)"}")
+        sb.appendLine("HTTP code: ${debugProfileHttpCode?.toString() ?: "(none yet)"}")
+        sb.appendLine("Response (500 chars): ${debugProfileBody ?: "(none yet)"}")
         return sb.toString()
     }
 
@@ -288,27 +310,39 @@ class StalkerApi(
         action: String,
         extra: Map<String, String> = emptyMap()
     ): JSONObject = withContext(Dispatchers.IO) {
+        val url = buildUrl(type, action, extra)
+        val headers = buildHeaders()
         val request = Request.Builder()
-            .url(buildUrl(type, action, extra))
-            .headers(buildHeaders())
+            .url(url)
+            .headers(headers)
             .build()
         client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                throw StalkerException("Portal HTTP ${response.code}")
-            }
+            val code = response.code
             val body = response.body?.string().orEmpty()
-            if (body.isBlank()) {
-                throw StalkerException("Empty response from portal (HTTP ${response.code})")
+            // v3.6: capture the FIRST get_profile request in full — URL,
+            // redacted headers, HTTP code, and body — BEFORE the
+            // success/empty checks, so Copy Debug Info shows the wire
+            // reality even for 200-with-empty responses. First attempt
+            // only (the Bearer attempt, the standard wire format); the
+            // auth-method ladder must not overwrite it.
+            if (type == "stb" && action == "get_profile" && debugProfileUrl == null) {
+                debugProfileUrl = url.toString()
+                debugProfileHeaders = debugHeaderDump(headers)
+                debugProfileHttpCode = code
+                debugProfileBody = if (body.isBlank()) "(empty)"
+                else body.replace(Regex("\\s+"), " ").take(500)
             }
-            // v3.4: capture the last get_profile body for Copy Debug Info.
-            if (type == "stb" && action == "get_profile") {
-                debugProfileResponse = body.replace(Regex("\\s+"), " ").take(1000)
+            if (!response.isSuccessful) {
+                throw StalkerException("Portal HTTP $code")
+            }
+            if (body.isBlank()) {
+                throw StalkerException("Empty response from portal (HTTP $code)")
             }
             try {
                 JSONObject(body)
             } catch (e: Exception) {
                 val snippet = body.replace(Regex("\\s+"), " ").take(150)
-                throw StalkerException("Invalid JSON from portal (HTTP ${response.code}): $snippet")
+                throw StalkerException("Invalid JSON from portal (HTTP $code): $snippet")
             }
         }
     }
