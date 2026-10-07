@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.delay
 
 /**
- * Minimal Stalker Middleware API client (portal.php).
+ * Minimal Stalker Middleware API client (load.php).
  *
  * Supported actions:
  * - handshake       (type=stb)
@@ -29,13 +29,14 @@ import kotlinx.coroutines.delay
  * The token is obtained via [handshake] and refreshed automatically when the
  * portal reports an invalid/expired token.
  *
- * v2.4 protocol shape (stock Ministra, Wireshark-verified):
- * - handshake: GET portal.php?type=stb&action=handshake
- *   (MAC travels in the mac cookie only, no token param)
- *   v3.5: JsHttpRequest=1-xml REMOVED — it was the MAG web-UI's AJAX
- *   library marker (browser artifact); native apps like OTT never send it.
- *   The portal's handshake is lenient but get_profile rejects mixed
- *   native-app-UA + browser-artifact clients as spoofing (v3.4 debug).
+ * v3.8 protocol shape (IPTV Stalker Player v1.43, string-verified):
+ * Working native apps use load.php — NOT portal.php. portal.php is the
+ * MAG-box web-UI endpoint with strict client validation ("Your STB is not
+ * supported"); load.php is the native-app API endpoint.
+ * - handshake: GET load.php?type=stb&action=handshake&token=&JsHttpRequest=1-xml
+ *   (MAC travels in the mac cookie; empty token= param included)
+ *   v3.5's JsHttpRequest removal applied to portal.php — for load.php the
+ *   working app SENDS JsHttpRequest=1-xml, so we restore it here.
  * - every later call: same URL shape + `Authorization: Bearer <token>` header.
  *   Never a token= or mac= query param — those break session association.
  *
@@ -291,14 +292,18 @@ class StalkerApi(
         action: String,
         extra: Map<String, String> = emptyMap()
     ): HttpUrl {
-        val builder = ("$baseUrl/portal.php").toHttpUrlOrNull()?.newBuilder()
+        val builder = ("$baseUrl/load.php").toHttpUrlOrNull()?.newBuilder()
             ?: throw StalkerException("Invalid portal URL")
         builder.addQueryParameter("type", type)
         builder.addQueryParameter("action", action)
-        // v3.5: NO JsHttpRequest=1-xml — that's the MAG web-UI's AJAX
-        // library marker (browser artifact). Native apps like OTT Navigator
-        // never send it; the portal's get_profile is strict about it even
-        // though the handshake is lenient.
+        // v3.8: load.php (NOT portal.php) — the native-app API endpoint.
+        // IPTV Stalker Player v1.43 uses load.php; portal.php is the MAG
+        // web-UI endpoint that rejects non-MAG clients ("Your STB is not
+        // supported"). The working app SENDS JsHttpRequest=1-xml with
+        // load.php, so we include it (v3.5's removal was portal.php-specific).
+        // v3.8: JsHttpRequest=1-xml — the working native app (IPTV Stalker
+        // v1.43) sends this with load.php on every request.
+        builder.addQueryParameter("JsHttpRequest", "1-xml")
         // v2.4: NO token=/mac= query params. Token goes in the Authorization:
         // Bearer header (see buildHeaders()); MAC goes in the mac cookie.
         // Stock Ministra behavior — sending them as query params makes the
@@ -433,11 +438,12 @@ class StalkerApi(
                     if (token.isNullOrBlank()) handshake()
                 }
             }
-            val url = ("$baseUrl/portal.php").toHttpUrlOrNull()?.newBuilder()
+            val url = ("$baseUrl/load.php").toHttpUrlOrNull()?.newBuilder()
                 ?: return@withContext ProbeResult(-1, 0, "", "Invalid portal URL")
             url.addQueryParameter("type", type)
             url.addQueryParameter("action", action)
-            // v3.5: no JsHttpRequest (browser/web-UI artifact — see buildUrl)
+            // v3.8: load.php + JsHttpRequest=1-xml (see buildUrl)
+            url.addQueryParameter("JsHttpRequest", "1-xml")
             // v2.4: no token=/mac= query params (Bearer header + mac cookie)
             // v3.1: ...except on TOKEN_PARAM portals, which get token=.
             // v2.3: no device IDs
@@ -502,7 +508,8 @@ class StalkerApi(
             val form = okhttp3.FormBody.Builder()
                 .add("type", type)
                 .add("action", action)
-            // v3.5: no JsHttpRequest (browser/web-UI artifact — see buildUrl)
+            // v3.8: load.php + JsHttpRequest=1-xml (see buildUrl)
+            form.add("JsHttpRequest", "1-xml")
             // v2.4: no token/mac in body (Bearer header + mac cookie)
             // v3.1: ...except on TOKEN_PARAM portals, which get token=.
             // v2.3: no device IDs
@@ -511,7 +518,7 @@ class StalkerApi(
                 token?.takeIf { it.isNotBlank() }?.let { form.add("token", it) }
             }
             val req = Request.Builder()
-                .url("$baseUrl/portal.php")
+                .url("$baseUrl/load.php")
                 .headers(buildHeaders())
                 .post(form.build())
                 .build()
@@ -545,9 +552,11 @@ class StalkerApi(
         debugProfileBody = null
         syncTokenCookie() // drop any stale token cookie before handshaking
         // v3.4: NO stb_type param — clean OTT-like request (was MAG250).
-        debugHandshakeUrl = buildUrl("stb", "handshake").toString()
+        // v3.8: handshake includes empty token= param, matching the working
+        // native app: load.php?type=stb&action=handshake&token=&JsHttpRequest=1-xml
+        debugHandshakeUrl = buildUrl("stb", "handshake", mapOf("token" to "")).toString()
         debugHandshakeHeaders = debugHeaderDump()
-        val raw = getRaw("stb", "handshake")
+        val raw = getRaw("stb", "handshake", mapOf("token" to ""))
         debugHandshakeResponse = raw.replace(Regex("\\s+"), " ").take(1000)
         android.util.Log.i(
             "StalkerApi",
