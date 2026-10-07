@@ -86,7 +86,7 @@ class ProbeActivity : AppCompatActivity() {
                 // require the profile call first in sequence.
                 appendLine("stb/get_profile ...")
                 try {
-                    val r = api.probe("stb", "get_profile")
+                    val r = api.probe("stb", "get_profile", snippetLen = 300)
                     if (r.error.isNotEmpty()) {
                         appendLine("stb/get_profile -> ERROR ${r.error}")
                     } else {
