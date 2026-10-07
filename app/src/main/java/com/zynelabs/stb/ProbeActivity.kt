@@ -14,7 +14,10 @@ import kotlinx.coroutines.withContext
  * actually implements. The app (on the user's phone) is the only thing that
  * can reach these portals, so the probing runs on-device.
  *
- * English-only, D-pad navigable. One result line per probed action.
+ * Sequence: header (portal + MAC) -> portal index page fetch -> handshake ->
+ * stb/get_profile -> the 9 content probes -> itv/get_genres via POST.
+ *
+ * English-only, D-pad navigable. One result line per step.
  *
  * Never dies silently: a progress line is printed BEFORE every blocking
  * network call, and every step is wrapped in try/catch, so the screen always
@@ -38,8 +41,6 @@ class ProbeActivity : AppCompatActivity() {
         binding.tvResults.text = ""
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                appendLine("Portal: " + Prefs.getPortalUrl(this@ProbeActivity))
-
                 val api: StalkerApi
                 try {
                     api = StalkerSession.get(this@ProbeActivity)
@@ -47,6 +48,26 @@ class ProbeActivity : AppCompatActivity() {
                     appendLine("Session FAILED: ${(e.message ?: e.javaClass.simpleName).take(120)}")
                     appendLine("Done.")
                     return@launch
+                }
+
+                appendLine("Portal: " + api.probePortalUrl)
+                appendLine("MAC: " + api.probeBoxMac)
+
+                // Step 0 — fetch the portal index page to identify the system
+                // (Ministra portal page? something else? empty?).
+                appendLine("Index ...")
+                try {
+                    val (code, detail, err) = api.probeRaw(api.probePortalUrl + "/")
+                    if (err.isNotEmpty()) {
+                        appendLine("Index -> ERROR $err")
+                    } else {
+                        appendLine("Index -> HTTP $code $detail")
+                    }
+                } catch (e: Exception) {
+                    appendLine(
+                        "Index -> ERROR " +
+                            (e.message ?: e.javaClass.simpleName).toString().take(80)
+                    )
                 }
 
                 appendLine("Handshake ...")
@@ -57,6 +78,26 @@ class ProbeActivity : AppCompatActivity() {
                     appendLine(
                         "Handshake FAILED: " +
                             (e.message ?: e.javaClass.simpleName).toString().take(120)
+                    )
+                }
+
+                // get_profile right after handshake: content actions may
+                // require the profile call first in sequence.
+                appendLine("stb/get_profile ...")
+                try {
+                    val r = api.probe("stb", "get_profile")
+                    if (r.error.isNotEmpty()) {
+                        appendLine("stb/get_profile -> ERROR ${r.error}")
+                    } else {
+                        appendLine(
+                            "stb/get_profile -> HTTP ${r.httpCode} " +
+                                "len=${r.bodyLength} ${r.snippet}"
+                        )
+                    }
+                } catch (e: Exception) {
+                    appendLine(
+                        "stb/get_profile -> ERROR " +
+                            (e.message ?: e.javaClass.simpleName).toString().take(80)
                     )
                 }
 
@@ -91,6 +132,24 @@ class ProbeActivity : AppCompatActivity() {
                                 (e.message ?: e.javaClass.simpleName).toString().take(80)
                         )
                     }
+                }
+                // POST variant: some panels only accept POST for data actions.
+                appendLine("itv/get_genres via POST ...")
+                try {
+                    val r = api.probePost("itv", "get_genres")
+                    if (r.error.isNotEmpty()) {
+                        appendLine("itv/get_genres via POST -> ERROR ${r.error}")
+                    } else {
+                        appendLine(
+                            "itv/get_genres via POST -> HTTP ${r.httpCode} " +
+                                "len=${r.bodyLength} ${r.snippet}"
+                        )
+                    }
+                } catch (e: Exception) {
+                    appendLine(
+                        "itv/get_genres via POST -> ERROR " +
+                            (e.message ?: e.javaClass.simpleName).toString().take(80)
+                    )
                 }
                 appendLine("Done.")
             } finally {
