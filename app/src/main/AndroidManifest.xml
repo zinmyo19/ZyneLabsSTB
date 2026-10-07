@@ -59,6 +59,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".ProbeActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".PlayerActivity"
             android:exported="false"
             android:screenOrientation="landscape"
