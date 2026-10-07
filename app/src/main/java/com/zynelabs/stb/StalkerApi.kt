@@ -34,6 +34,13 @@ import kotlinx.coroutines.delay
  *   (MAC travels in the mac cookie only, no token param)
  * - every later call: same URL shape + `Authorization: Bearer <token>` header.
  *   Never a token= or mac= query param — those break session association.
+ *
+ * v3.1 auth-method fallback: some panels (older variants, e.g. ultvtivon)
+ * expect the session token as a `token=` query parameter instead of the
+ * Bearer header. If get_profile returns id:null after fresh Bearer
+ * handshakes, we fall back to token-as-query-param, probe get_profile, and
+ * keep whichever method yields a valid profile id (cached per portal URL in
+ * [authMethod], reset with StalkerSession.reset()).
  */
 class StalkerApi(
     portalUrl: String,
@@ -80,6 +87,20 @@ class StalkerApi(
 
     @Volatile
     private var token: String? = null
+
+    /**
+     * v3.1: which wire format carries the session token. BEARER (v2.4,
+     * stock Ministra) sends `Authorization: Bearer <token>`; TOKEN_PARAM
+     * (older panel variants) sends `token=<token>` as a query parameter.
+     * The fallback is chosen once per portal (see [withSession]); the
+     * working method is kept on this instance, and StalkerSession drops
+     * the instance (resetting to BEARER) whenever the portal URL/MAC
+     * changes or [StalkerSession.reset] is called.
+     */
+    private enum class AuthMethod { BEARER, TOKEN_PARAM }
+
+    @Volatile
+    private var authMethod: AuthMethod = AuthMethod.BEARER
 
     /**
      * v2.7: serializes handshakes. The portal enforces one session per MAC —
@@ -135,7 +156,11 @@ class StalkerApi(
         // v2.4: the session token travels as an Authorization: Bearer header
         // (stock Ministra behavior, Wireshark-verified) — never as a token=
         // query param. The MAC travels in the mac cookie only.
-        token?.takeIf { it.isNotBlank() }?.let { b.add("Authorization", "Bearer $it") }
+        // v3.1: TOKEN_PARAM portals get the token as a query param instead
+        // (see buildUrl) — no Authorization header for those.
+        if (authMethod == AuthMethod.BEARER) {
+            token?.takeIf { it.isNotBlank() }?.let { b.add("Authorization", "Bearer $it") }
+        }
         return b.build()
     }
 
@@ -153,6 +178,9 @@ class StalkerApi(
         // Bearer header (see buildHeaders()); MAC goes in the mac cookie.
         // Stock Ministra behavior — sending them as query params makes the
         // portal unable to associate requests with the session (id:null).
+        // v3.1: TOKEN_PARAM portals are the exception — they get
+        // token=<token> as a query param (see below); buildHeaders() then
+        // omits the Authorization header.
         // v2.3: no device IDs (sn/device_id/device_id2/signature).
         // v2.6: extra params (notably the channel `cmd` for create_link, which
         // is itself a URL) are sent UNENCODED. v2.2 proved this portal does
@@ -160,6 +188,11 @@ class StalkerApi(
         // "ffmpeg%20http%3A%2F%2F..." would never match server-side.
         for ((key, value) in extra) {
             builder.addEncodedQueryParameter(key, value)
+        }
+        // v3.1: token-as-query-param auth (older panel variants).
+        // The handshake runs with a blank token, so it never carries one.
+        if (authMethod == AuthMethod.TOKEN_PARAM) {
+            token?.takeIf { it.isNotBlank() }?.let { builder.addQueryParameter("token", it) }
         }
         return builder.build()
     }
@@ -249,9 +282,13 @@ class StalkerApi(
             url.addQueryParameter("action", action)
             url.addQueryParameter("JsHttpRequest", "1-xml")
             // v2.4: no token=/mac= query params (Bearer header + mac cookie)
+            // v3.1: ...except on TOKEN_PARAM portals, which get token=.
             // v2.3: no device IDs
             for ((k, v) in extra) {
                 url.addQueryParameter(k, v)
+            }
+            if (authMethod == AuthMethod.TOKEN_PARAM) {
+                token?.takeIf { it.isNotBlank() }?.let { url.addQueryParameter("token", it) }
             }
             val req = Request.Builder().url(url.build()).headers(buildHeaders()).get().build()
             client.newCall(req).execute().use { resp ->
@@ -310,8 +347,12 @@ class StalkerApi(
                 .add("action", action)
                 .add("JsHttpRequest", "1-xml")
             // v2.4: no token/mac in body (Bearer header + mac cookie)
+            // v3.1: ...except on TOKEN_PARAM portals, which get token=.
             // v2.3: no device IDs
             for ((k, v) in extra) form.add(k, v)
+            if (authMethod == AuthMethod.TOKEN_PARAM) {
+                token?.takeIf { it.isNotBlank() }?.let { form.add("token", it) }
+            }
             val req = Request.Builder()
                 .url("$baseUrl/portal.php")
                 .headers(buildHeaders())
@@ -377,6 +418,41 @@ class StalkerApi(
     }
 
     /**
+     * v3.1: tries the token-as-query-param auth method. Some panels (older
+     * variants, e.g. ultvtivon.site) expect `token=<token>` in the query
+     * string instead of the v2.4 `Authorization: Bearer` header — with the
+     * header they return id:null, which used to be misread as "MAC not
+     * registered" (false positive: OTT works with the same MAC).
+     *
+     * Switches [authMethod] to TOKEN_PARAM, does a clean handshake (no
+     * token on the handshake request itself), then probes stb/get_profile
+     * with the token as a query param.
+     *
+     * @return true when the probe yields a profile with a non-blank id —
+     *         the caller keeps TOKEN_PARAM; false leaves [authMethod] for
+     *         the caller to restore.
+     */
+    private suspend fun tryTokenParamAuth(): Boolean {
+        return try {
+            authMethod = AuthMethod.TOKEN_PARAM
+            handshakeMutex.withLock {
+                token = null // clean handshake — no stale token on the wire
+                handshake()
+            }
+            val profile = jsPayload(get("stb", "get_profile"))
+            val ok = isMacRegistered(profile)
+            android.util.Log.i("StalkerApi", "tryTokenParamAuth: profile id valid = $ok")
+            ok
+        } catch (e: Exception) {
+            android.util.Log.w(
+                "StalkerApi",
+                "tryTokenParamAuth failed: ${(e.message ?: e.javaClass.simpleName).take(60)}"
+            )
+            false
+        }
+    }
+
+    /**
      * Runs [block], performing a handshake first when there is no token and
      * self-healing when the portal rejects the session.
      *
@@ -412,6 +488,8 @@ class StalkerApi(
         val maxRetries = 3
         var attempt = 0
         var firstWasAuthFailure = false
+        // v3.1: whether the token-as-query-param fallback has been tried.
+        var tokenParamTried = false
         while (true) {
             try {
                 return block()
@@ -433,9 +511,29 @@ class StalkerApi(
                 if (attempt == 0) firstWasAuthFailure = true
                 attempt++
                 if (attempt > maxRetries) {
-                    // Fresh handshakes didn't help: the token isn't the
-                    // problem — the MAC itself isn't registered. (Preserves
-                    // the v2.5/v2.7 "MAC not registered" detection.)
+                    // v3.1: auth-method fallback. Fresh Bearer handshakes
+                    // didn't help — maybe this panel expects the token as a
+                    // `token=` query param (older variant) instead of the
+                    // Bearer header. Probe get_profile that way before
+                    // concluding the MAC is unregistered.
+                    if (authMethod == AuthMethod.BEARER && !tokenParamTried) {
+                        tokenParamTried = true
+                        android.util.Log.w(
+                            "StalkerApi",
+                            "withSession: Bearer auth exhausted, trying token= query param"
+                        )
+                        if (tryTokenParamAuth()) {
+                            // TOKEN_PARAM works — retry the call with it.
+                            attempt = 0
+                            firstWasAuthFailure = false
+                            continue
+                        }
+                        authMethod = AuthMethod.BEARER // restore for honesty
+                    }
+                    // BOTH auth methods failed after fresh handshakes: the
+                    // token isn't the problem — the MAC itself isn't
+                    // registered. (Preserves the v2.5/v2.7 "MAC not
+                    // registered" detection, now a true last resort.)
                     if (firstWasAuthFailure) {
                         throw StalkerException("MAC not registered on this portal")
                     }
