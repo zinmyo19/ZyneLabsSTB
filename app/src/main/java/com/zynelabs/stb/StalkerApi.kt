@@ -41,6 +41,14 @@ import kotlinx.coroutines.delay
  * handshakes, we fall back to token-as-query-param, probe get_profile, and
  * keep whichever method yields a valid profile id (cached per portal URL in
  * [authMethod], reset with StalkerSession.reset()).
+ *
+ * v3.2 auth-method ladder: ultvtivon.site handshakes OK but returns
+ * HTTP 200 len=0 for EVERY call with both Bearer and token= — it needs a
+ * different wire format. We now try, in order: Bearer header → token=
+ * query param → token= cookie → MAC-only (no token anywhere, session is
+ * cookie-bound). The first method yielding a valid profile id is cached.
+ * "MAC not registered" fires only when all four fail. handshake() logs
+ * its raw response (first 500 chars) for token-shape diagnostics.
  */
 class StalkerApi(
     portalUrl: String,
@@ -96,8 +104,14 @@ class StalkerApi(
      * working method is kept on this instance, and StalkerSession drops
      * the instance (resetting to BEARER) whenever the portal URL/MAC
      * changes or [StalkerSession.reset] is called.
+     *
+     * v3.2: two more methods. TOKEN_COOKIE sends the token as a `token=`
+     * cookie (some panels are cookie-session based). MAC_ONLY sends NO
+     * token anywhere — just the MAC cookie + standard headers (panels
+     * where the token is informational and the session is cookie-bound).
+     * Tried in order: BEARER → TOKEN_PARAM → TOKEN_COOKIE → MAC_ONLY.
      */
-    private enum class AuthMethod { BEARER, TOKEN_PARAM }
+    private enum class AuthMethod { BEARER, TOKEN_PARAM, TOKEN_COOKIE, MAC_ONLY }
 
     @Volatile
     private var authMethod: AuthMethod = AuthMethod.BEARER
@@ -158,6 +172,10 @@ class StalkerApi(
         // query param. The MAC travels in the mac cookie only.
         // v3.1: TOKEN_PARAM portals get the token as a query param instead
         // (see buildUrl) — no Authorization header for those.
+        // v3.2: TOKEN_COOKIE portals get the token as a `token=` cookie
+        // (synced into the cookie jar by syncTokenCookie()) — no
+        // Authorization header. MAC_ONLY portals get NO token anywhere;
+        // the session is cookie-bound (MAC + handshake session cookies).
         if (authMethod == AuthMethod.BEARER) {
             token?.takeIf { it.isNotBlank() }?.let { b.add("Authorization", "Bearer $it") }
         }
@@ -370,17 +388,56 @@ class StalkerApi(
 
     /**
      * Performs the handshake and stores the session token.
+     * v3.2: logs the raw handshake response (first 500 chars) to logcat
+     * so we can verify token parsing on panels with non-standard shapes.
      * @return the new token
      */
     suspend fun handshake(): String {
         token = null
-        val js = jsPayload(get("stb", "handshake", mapOf("stb_type" to "MAG250")))
+        syncTokenCookie() // drop any stale token cookie before handshaking
+        val raw = getRaw("stb", "handshake", mapOf("stb_type" to "MAG250"))
+        android.util.Log.i(
+            "StalkerApi",
+            "handshake: raw=${raw.replace(Regex("\\s+"), " ").take(500)}"
+        )
+        val response = try {
+            JSONObject(raw)
+        } catch (e: Exception) {
+            throw StalkerException("Invalid JSON from portal (handshake)")
+        }
+        val js = jsPayload(response)
         val newToken = js.optString("token", "")
         if (newToken.isBlank()) {
             throw StalkerException("Handshake failed: no token issued")
         }
         token = newToken
+        syncTokenCookie() // TOKEN_COOKIE: publish the fresh token as a cookie
         return newToken
+    }
+
+    /**
+     * v3.2: raw GET returning the body string (for handshake logging).
+     * Same request shape as [get] but without JSON parsing.
+     */
+    private suspend fun getRaw(
+        type: String,
+        action: String,
+        extra: Map<String, String> = emptyMap()
+    ): String = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url(buildUrl(type, action, extra))
+            .headers(buildHeaders())
+            .build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw StalkerException("Portal HTTP ${response.code}")
+            }
+            val body = response.body?.string().orEmpty()
+            if (body.isBlank()) {
+                throw StalkerException("Empty response from portal (HTTP ${response.code})")
+            }
+            body
+        }
     }
 
     /**
@@ -424,29 +481,30 @@ class StalkerApi(
      * header they return id:null, which used to be misread as "MAC not
      * registered" (false positive: OTT works with the same MAC).
      *
-     * Switches [authMethod] to TOKEN_PARAM, does a clean handshake (no
-     * token on the handshake request itself), then probes stb/get_profile
-     * with the token as a query param.
+     * v3.2: generalized to try any [AuthMethod]. Switches [authMethod],
+     * does a clean handshake (no token on the handshake request itself —
+     * syncTokenCookie() drops the stale cookie first), then probes
+     * stb/get_profile with the new method.
      *
      * @return true when the probe yields a profile with a non-blank id —
-     *         the caller keeps TOKEN_PARAM; false leaves [authMethod] for
+     *         the caller keeps the method; false leaves [authMethod] for
      *         the caller to restore.
      */
-    private suspend fun tryTokenParamAuth(): Boolean {
+    private suspend fun tryAuthMethod(method: AuthMethod): Boolean {
         return try {
-            authMethod = AuthMethod.TOKEN_PARAM
+            authMethod = method
             handshakeMutex.withLock {
                 token = null // clean handshake — no stale token on the wire
-                handshake()
+                handshake() // syncTokenCookie() runs inside handshake()
             }
             val profile = jsPayload(get("stb", "get_profile"))
             val ok = isMacRegistered(profile)
-            android.util.Log.i("StalkerApi", "tryTokenParamAuth: profile id valid = $ok")
+            android.util.Log.i("StalkerApi", "tryAuthMethod($method): profile id valid = $ok")
             ok
         } catch (e: Exception) {
             android.util.Log.w(
                 "StalkerApi",
-                "tryTokenParamAuth failed: ${(e.message ?: e.javaClass.simpleName).take(60)}"
+                "tryAuthMethod($method) failed: ${(e.message ?: e.javaClass.simpleName).take(60)}"
             )
             false
         }
@@ -472,6 +530,12 @@ class StalkerApi(
      * are logged to logcat. If the call still fails with an auth failure
      * after fresh handshakes, the MAC is reported as not registered.
      *
+     * v3.2: auth-method ladder. If fresh handshakes with the current method
+     * keep failing, the app walks BEARER → TOKEN_PARAM → TOKEN_COOKIE →
+     * MAC_ONLY (see [tryAuthMethod]), keeping the first method that yields
+     * a valid profile id. Only when ALL four methods fail is the MAC
+     * reported as not registered.
+     *
      * Network-level (IOException) recovery: evict the pool, back off, retry
      * with the existing token; a subsequent auth failure on retry flows
      * into the forced-handshake path above.
@@ -488,8 +552,9 @@ class StalkerApi(
         val maxRetries = 3
         var attempt = 0
         var firstWasAuthFailure = false
-        // v3.1: whether the token-as-query-param fallback has been tried.
-        var tokenParamTried = false
+        // v3.2: index into the auth-method ladder. We start with the
+        // cached/current method and walk forward on exhaustion.
+        var methodIndex = AuthMethod.values().indexOf(authMethod).coerceAtLeast(0)
         while (true) {
             try {
                 return block()
@@ -511,26 +576,38 @@ class StalkerApi(
                 if (attempt == 0) firstWasAuthFailure = true
                 attempt++
                 if (attempt > maxRetries) {
-                    // v3.1: auth-method fallback. Fresh Bearer handshakes
-                    // didn't help — maybe this panel expects the token as a
-                    // `token=` query param (older variant) instead of the
-                    // Bearer header. Probe get_profile that way before
-                    // concluding the MAC is unregistered.
-                    if (authMethod == AuthMethod.BEARER && !tokenParamTried) {
-                        tokenParamTried = true
+                    // v3.2: walk the auth-method ladder. The current method's
+                    // fresh handshakes didn't help — try the next wire
+                    // format (Bearer → token= param → token cookie →
+                    // MAC-only) before concluding the MAC is unregistered.
+                    // Each tryAuthMethod does its own clean handshake +
+                    // profile probe; we keep the first method that yields a
+                    // valid profile id.
+                    val methods = AuthMethod.values()
+                    var foundWorking = false
+                    while (methodIndex < methods.size - 1 && !foundWorking) {
+                        methodIndex++
+                        val next = methods[methodIndex]
                         android.util.Log.w(
                             "StalkerApi",
-                            "withSession: Bearer auth exhausted, trying token= query param"
+                            "withSession: ${methods[methodIndex - 1]} exhausted, " +
+                                "trying $next"
                         )
-                        if (tryTokenParamAuth()) {
-                            // TOKEN_PARAM works — retry the call with it.
-                            attempt = 0
-                            firstWasAuthFailure = false
-                            continue
+                        if (tryAuthMethod(next)) {
+                            authMethod = next
+                            foundWorking = true
                         }
-                        authMethod = AuthMethod.BEARER // restore for honesty
                     }
-                    // BOTH auth methods failed after fresh handshakes: the
+                    if (foundWorking) {
+                        // New method works — retry the call with it.
+                        attempt = 0
+                        firstWasAuthFailure = false
+                        // Restart the ladder from the working method for
+                        // any future exhaustion in this session.
+                        methodIndex = AuthMethod.values().indexOf(authMethod)
+                        continue
+                    }
+                    // ALL auth methods failed after fresh handshakes: the
                     // token isn't the problem — the MAC itself isn't
                     // registered. (Preserves the v2.5/v2.7 "MAC not
                     // registered" detection, now a true last resort.)
@@ -859,12 +936,42 @@ class StalkerApi(
 
     // ------------------------------------------------------------ cookie jar
 
+    /**
+     * v3.2: keeps the `token=` cookie in sync with [authMethod]/[token].
+     * Called after every handshake and whenever the auth method changes.
+     * For TOKEN_COOKIE the token travels as a cookie; for all other
+     * methods any stale token cookie is removed so it can't confuse
+     * the portal.
+     */
+    private fun syncTokenCookie() {
+        val portalHttp = ("$baseUrl/").toHttpUrlOrNull() ?: return
+        if (authMethod == AuthMethod.TOKEN_COOKIE) {
+            token?.takeIf { it.isNotBlank() }?.let { t ->
+                cookieJar.seed(
+                    portalHttp,
+                    listOf(
+                        Cookie.Builder().name("token").value(t)
+                            .domain(portalHttp.host).path("/").build()
+                    )
+                )
+                android.util.Log.i("StalkerApi", "syncTokenCookie: token cookie set")
+            }
+        } else {
+            cookieJar.removeCookie("token")
+        }
+    }
+
     private class MemoryCookieJar : CookieJar {
         private val store = mutableListOf<Cookie>()
 
         /** Pre-loads cookies (e.g. the STB fingerprint cookies) before any request. */
         fun seed(url: HttpUrl, cookies: List<Cookie>) {
             saveFromResponse(url, cookies)
+        }
+
+        /** v3.2: removes a cookie by name (e.g. stale token cookie). */
+        fun removeCookie(name: String) {
+            store.removeAll { it.name == name }
         }
 
         override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
