@@ -88,10 +88,7 @@ class GuideActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                val api = StalkerApi(
-                    Prefs.getPortalUrl(this@GuideActivity),
-                    Prefs.getMac(this@GuideActivity)
-                )
+                val api = StalkerSession.get(this@GuideActivity)
                 var list = api.getAllChannels()
                 val genreId = intent.getStringExtra(EXTRA_GENRE_ID)
                 if (!genreId.isNullOrEmpty()) {
@@ -126,10 +123,7 @@ class GuideActivity : AppCompatActivity() {
         holder.showLoading(row.channel)
         lifecycleScope.launch {
             try {
-                val api = StalkerApi(
-                    Prefs.getPortalUrl(this@GuideActivity),
-                    Prefs.getMac(this@GuideActivity)
-                )
+                val api = StalkerSession.get(this@GuideActivity)
                 val programs = api.getEpg(row.channel.id, row.date)
                 epgCache[key] = programs
                 holder.showPrograms(row.channel, programs)
