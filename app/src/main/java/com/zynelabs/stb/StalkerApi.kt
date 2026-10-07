@@ -41,6 +41,23 @@ class StalkerApi(
 
     class StalkerException(message: String) : Exception(message)
 
+    /**
+     * Marker for auth/session failures that warrant a re-handshake + retry.
+     * v2.5: the portal invalidates tokens (a handshake from elsewhere, or
+     * OTT reconnecting, kills our token) and answers with HTTP 200 + empty
+     * body — or a profile with id:null — instead of a 401.
+     */
+    private class AuthFailureException(message: String) : StalkerException(message)
+
+    /** True when [e] looks like a dead/invalid session (not a network blip). */
+    private fun isAuthFailure(e: StalkerException): Boolean {
+        if (e is AuthFailureException) return true
+        val msg = e.message.orEmpty()
+        return msg.contains("Empty response from portal") ||
+            msg.contains("Invalid JSON from portal") ||
+            msg.contains("Portal error")
+    }
+
     private val baseUrl: String = portalUrl.trim().trimEnd('/')
 
     /** Base portal URL (shown in the on-device Portal API Probe header). */
@@ -296,10 +313,17 @@ class StalkerApi(
 
     /**
      * Runs [block], performing a handshake first when there is no token and
-     * re-handshaking once when the portal rejects the current token.
-     * Also recovers from a stale pooled connection (server closed its side
-     * while OkHttp still held it): evicts the pool, waits a beat,
-     * re-handshakes on a fresh connection and retries once.
+     * self-healing when the portal rejects the session.
+     *
+     * v2.5 self-healing: the portal invalidates tokens (a handshake from
+     * elsewhere, or OTT reconnecting, kills our token) and answers with
+     * HTTP 200 + empty body instead of 401. When an auth failure is
+     * detected — empty body, portal error, or a profile with id:null — we
+     * do ONE fresh handshake ([buildHeaders] picks up the new token for the
+     * retry) and retry the call once. If the retry also fails, the ORIGINAL
+     * error is thrown. Network-level (IOException) recovery is unchanged:
+     * evict the pool, wait a beat, retry with the existing token first,
+     * re-handshake only as a last resort.
      */
     private suspend fun <T> withSession(block: suspend () -> T): T {
         if (token.isNullOrBlank()) {
@@ -315,14 +339,32 @@ class StalkerApi(
             delay(1000)
             try {
                 return block()
-            } catch (e2: Exception) {
-                handshake()
-                return block()
+            } catch (e2: StalkerException) {
+                if (isAuthFailure(e2)) {
+                    handshake()
+                    try {
+                        return block()
+                    } catch (retryEx: Exception) {
+                        throw e2 // original auth error, not the retry's
+                    }
+                }
+                throw e2
             }
         } catch (e: StalkerException) {
-            // Token probably expired — get a fresh one and retry once.
-            handshake()
-            return block()
+            if (!isAuthFailure(e)) throw e
+            val originalError = e
+            handshake() // fresh token; buildHeaders() uses it for the retry
+            try {
+                return block()
+            } catch (retryEx: Exception) {
+                // Still failing after a FRESH handshake: if the profile
+                // STILL has id:null, the MAC itself isn't registered
+                // (not a dead token) — say so plainly.
+                if (retryEx is AuthFailureException && originalError is AuthFailureException) {
+                    throw StalkerException("MAC not registered on this portal")
+                }
+                throw originalError
+            }
         }
     }
 
@@ -330,7 +372,15 @@ class StalkerApi(
 
     /** Returns the raw profile JSON object of the box. */
     suspend fun getProfile(): JSONObject = withSession {
-        jsPayload(get("stb", "get_profile"))
+        val profile = jsPayload(get("stb", "get_profile"))
+        // v2.5: id:null means the portal doesn't associate this session with
+        // a user — the token is dead OR the MAC isn't registered. Throw the
+        // marker so withSession re-handshakes and retries once before
+        // concluding the MAC is unregistered.
+        if (!isMacRegistered(profile)) {
+            throw AuthFailureException("Portal returned an empty profile (id:null)")
+        }
+        profile
     }
 
     /**
