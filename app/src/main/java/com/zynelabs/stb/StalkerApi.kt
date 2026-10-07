@@ -9,6 +9,7 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -64,6 +65,18 @@ class StalkerApi(portalUrl: String, private val mac: String) {
 
     // ------------------------------------------------------------------ HTTP
 
+    /** The MAG-box fingerprint headers sent with every portal request. */
+    private fun buildHeaders(): okhttp3.Headers = okhttp3.Headers.Builder()
+        .add(
+            "User-Agent",
+            "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 " +
+                "(KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3"
+        )
+        .add("X-User-Agent", "Model: MAG250; Link: Ethernet")
+        .add("Referer", "$baseUrl/")
+        .add("X-Requested-With", "XMLHttpRequest")
+        .build()
+
     private fun buildUrl(
         type: String,
         action: String,
@@ -89,14 +102,7 @@ class StalkerApi(portalUrl: String, private val mac: String) {
     ): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(buildUrl(type, action, extra))
-            .header(
-                "User-Agent",
-                "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 " +
-                    "(KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3"
-            )
-            .header("X-User-Agent", "Model: MAG250; Link: Ethernet")
-            .header("Referer", "$baseUrl/")
-            .header("X-Requested-With", "XMLHttpRequest")
+            .headers(buildHeaders())
             .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
@@ -123,6 +129,60 @@ class StalkerApi(portalUrl: String, private val mac: String) {
             throw StalkerException("Portal error: $err")
         }
         return response.getJSONObject("js")
+    }
+
+    /**
+     * Returns the "js" payload as a JSONArray, tolerating both shapes:
+     * {"js":[...]} (e.g. genres) and {"js":{"data":[...]}} (e.g. channels).
+     * Null when the payload is absent or neither shape.
+     */
+    fun jsArray(response: JSONObject): JSONArray? {
+        if (!response.has("js") || response.isNull("js")) return null
+        response.optJSONArray("js")?.let { return it }
+        val obj = response.optJSONObject("js") ?: return null
+        return obj.optJSONArray("data")
+    }
+
+    /** Result of a raw [probe] call. Never throws — failures land in [error]. */
+    data class ProbeResult(
+        val httpCode: Int,
+        val bodyLength: Int,
+        val snippet: String,
+        val error: String
+    )
+
+    /**
+     * Raw probe: performs GET type/action with token+mac and the standard
+     * headers, returning the HTTP status, body length and a 100-char snippet.
+     * Used by the on-device Portal API Probe to discover which actions a
+     * portal actually implements. Never throws.
+     */
+    suspend fun probe(
+        type: String,
+        action: String,
+        extra: Map<String, String> = emptyMap()
+    ): ProbeResult = withContext(Dispatchers.IO) {
+        try {
+            if (token.isNullOrBlank()) handshake()
+            val url = ("$baseUrl/portal.php").toHttpUrlOrNull()?.newBuilder()
+                ?: return@withContext ProbeResult(-1, 0, "", "Invalid portal URL")
+            url.addQueryParameter("type", type)
+            url.addQueryParameter("action", action)
+            url.addQueryParameter("JsHttpRequest", "1-xml")
+            token?.let { url.addQueryParameter("token", it) }
+            url.addQueryParameter("mac", mac)
+            for ((k, v) in extra) {
+                url.addQueryParameter(k, v)
+            }
+            val req = Request.Builder().url(url.build()).headers(buildHeaders()).get().build()
+            client.newCall(req).execute().use { resp ->
+                val body = resp.body?.string().orEmpty()
+                val snippet = body.replace(Regex("\\s+"), " ").take(100)
+                ProbeResult(resp.code, body.length, snippet, "")
+            }
+        } catch (e: Exception) {
+            ProbeResult(-1, 0, "", (e.message ?: e.javaClass.simpleName).take(80))
+        }
     }
 
     // -------------------------------------------------------------- session
@@ -183,8 +243,7 @@ class StalkerApi(portalUrl: String, private val mac: String) {
 
     /** Returns all TV channels, sorted by channel number. */
     suspend fun getAllChannels(): List<Channel> = withSession {
-        val js = jsPayload(get("itv", "get_all_channels"))
-        val data = js.optJSONArray("data") ?: return@withSession emptyList()
+        val data = jsArray(get("itv", "get_all_channels")) ?: return@withSession emptyList()
         val list = ArrayList<Channel>(data.length())
         for (i in 0 until data.length()) {
             val o = data.getJSONObject(i)
@@ -230,8 +289,7 @@ class StalkerApi(portalUrl: String, private val mac: String) {
 
     /** Returns TV genres from the portal. Empty list when unsupported. */
     suspend fun getGenres(): List<Genre> = withSession {
-        val js = jsPayload(get("itv", "get_genres"))
-        val data = js.optJSONArray("data") ?: return@withSession emptyList()
+        val data = jsArray(get("itv", "get_genres")) ?: return@withSession emptyList()
         val list = ArrayList<Genre>(data.length())
         for (i in 0 until data.length()) {
             val o = data.getJSONObject(i)
