@@ -90,6 +90,15 @@ import kotlinx.coroutines.delay
  * X-User-Agent, removed stb_lang/timezone, removed Referer). Reverted to
  * the exact wire format OTT uses. Kept: /server/load.php (v3.9), Bearer
  * auth (v2.4), JsHttpRequest=1-xml (v3.8) — all capture-confirmed.
+ *
+ * v4.1: skip stb/get_profile entirely — OTT's packet-captured flow goes
+ * handshake → itv/get_ordered_list DIRECTLY (no get_profile call was ever
+ * captured on bingeiptv.xyz or wafasiad.com). bingeiptv.xyz returns EMPTY
+ * for get_profile even with the v4.0 MAG format, while get_ordered_list
+ * works. The auth ladder ([tryAuthMethod]) and session validation
+ * ([getProfile]) now probe itv/get_ordered_list page 1 for real channel
+ * data instead of stb/get_profile for a profile id. "MAC not registered"
+ * fires only when all four auth methods fail to return channel data.
  */
 class StalkerApi(
     portalUrl: String,
@@ -220,6 +229,10 @@ class StalkerApi(
      * any success/empty-body check so we see the HTTP code and body even
      * when the portal returns 200-with-empty (the "MAC not registered"
      * false-positive shape). Redacted token — safe to paste in chat.
+     *
+     * v4.1: captures the first itv/get_ordered_list instead — OTT's flow
+     * skips stb/get_profile entirely, and our auth validation now uses
+     * the channel list (see [tryAuthMethod]/[getProfile]).
      */
     @Volatile var debugProfileUrl: String? = null
         private set
@@ -269,7 +282,7 @@ class StalkerApi(
         sb.appendLine("Handshake response (1000 chars):")
         sb.appendLine(debugHandshakeResponse ?: "(none yet)")
         sb.appendLine()
-        sb.appendLine("Get Profile Request (first attempt):")
+        sb.appendLine("Channel Validation (first itv/get_ordered_list attempt):")
         sb.appendLine("URL: ${debugProfileUrl ?: "(none yet)"}")
         sb.appendLine("Headers: ${debugProfileHeaders ?: "(none yet)"}")
         sb.appendLine("HTTP code: ${debugProfileHttpCode?.toString() ?: "(none yet)"}")
@@ -438,13 +451,14 @@ class StalkerApi(
         client.newCall(request).execute().use { response ->
             val code = response.code
             val body = response.body?.string().orEmpty()
-            // v3.7: capture the first get_profile AFTER each handshake().
-            // handshake() resets these fields, so Copy Debug Info always
-            // shows the CURRENT session's attempt. (v3.6 captured once per
-            // instance, which mixed the last handshake's token with an
-            // earlier ladder step's get_profile token — looked like a
-            // stale-token bug in diagnostics, but was stale diagnostics.)
-            if (type == "stb" && action == "get_profile" && debugProfileUrl == null) {
+            // v4.1: capture the first itv/get_ordered_list AFTER each
+            // handshake() (the session-validation call — see [getProfile]
+            // and [tryAuthMethod]). OTT's packet-captured flow skips
+            // stb/get_profile entirely, so get_profile diagnostics are
+            // no longer useful. handshake() resets these fields, so Copy
+            // Debug Info always shows the CURRENT session's attempt.
+            // (v3.6–v3.7 captured get_profile; v4.1 supersedes that.)
+            if (type == "itv" && action == "get_ordered_list" && debugProfileUrl == null) {
                 debugProfileUrl = url.toString()
                 debugProfileHeaders = debugHeaderDump(headers)
                 debugProfileHttpCode = code
@@ -619,12 +633,14 @@ class StalkerApi(
      */
     suspend fun handshake(): String {
         token = null
-        // v3.7: reset the per-session get_profile capture. The
-        // StalkerSession singleton reuses this instance across connects,
-        // and the auth ladder handshakes once per method — without this
-        // reset, Copy Debug Info would show a previous session/ladder
-        // step's get_profile URL (with its token) next to the current
-        // handshake's token: a misleading "stale token" in diagnostics.
+        // v4.1: reset the per-session validation capture (first
+        // itv/get_ordered_list — see [get]). The StalkerSession singleton
+        // reuses this instance across connects, and the auth ladder
+        // handshakes once per method — without this reset, Copy Debug Info
+        // would show a previous session/ladder step's validation URL next
+        // to the current handshake's token: misleading diagnostics.
+        // (v3.7 reset the get_profile capture; v4.1 validates via the
+        // channel list instead.)
         debugProfileUrl = null
         debugProfileHeaders = null
         debugProfileHttpCode = null
@@ -759,9 +775,16 @@ class StalkerApi(
      * syncTokenCookie() drops the stale cookie first), then probes
      * stb/get_profile with the new method.
      *
-     * @return true when the probe yields a profile with a non-blank id —
-     *         the caller keeps the method; false leaves [authMethod] for
-     *         the caller to restore.
+     * v4.1: validation now uses itv/get_ordered_list page 1 instead of
+     * stb/get_profile. Dominic's packet capture proved OTT Navigator NEVER
+     * calls stb/get_profile — its flow is handshake → get_ordered_list
+     * directly. bingeiptv.xyz returns EMPTY for get_profile even with the
+     * v4.0 MAG format, while get_ordered_list works. Real channel data
+     * ({"js":{"data":[... with >= 1 item) is the proof the session works.
+     *
+     * @return true when the probe yields channel data — the caller keeps
+     *         the method; false leaves [authMethod] for the caller to
+     *         restore.
      */
     private suspend fun tryAuthMethod(method: AuthMethod): Boolean {
         return try {
@@ -770,9 +793,14 @@ class StalkerApi(
                 token = null // clean handshake — no stale token on the wire
                 handshake() // syncTokenCookie() runs inside handshake()
             }
-            val profile = jsPayload(get("stb", "get_profile"))
-            val ok = isMacRegistered(profile)
-            android.util.Log.i("StalkerApi", "tryAuthMethod($method): profile id valid = $ok")
+            val js = jsPayload(get("itv", "get_ordered_list", mapOf("p" to "1")))
+            val data = js.optJSONArray("data")
+            val ok = data != null && data.length() > 0
+            android.util.Log.i(
+                "StalkerApi",
+                "tryAuthMethod($method): channel data valid = $ok " +
+                    "(items=${data?.length() ?: 0})"
+            )
             ok
         } catch (e: Exception) {
             android.util.Log.w(
@@ -806,8 +834,9 @@ class StalkerApi(
      * v3.2: auth-method ladder. If fresh handshakes with the current method
      * keep failing, the app walks BEARER → TOKEN_PARAM → TOKEN_COOKIE →
      * MAC_ONLY (see [tryAuthMethod]), keeping the first method that yields
-     * a valid profile id. Only when ALL four methods fail is the MAC
-     * reported as not registered.
+     * valid channel data (v4.1: itv/get_ordered_list page 1 — OTT's flow
+     * skips stb/get_profile entirely). Only when ALL four methods fail is
+     * the MAC reported as not registered.
      *
      * Network-level (IOException) recovery: evict the pool, back off, retry
      * with the existing token; a subsequent auth failure on retry flows
@@ -854,8 +883,9 @@ class StalkerApi(
                     // format (Bearer → token= param → token cookie →
                     // MAC-only) before concluding the MAC is unregistered.
                     // Each tryAuthMethod does its own clean handshake +
-                    // profile probe; we keep the first method that yields a
-                    // valid profile id.
+                    // channel-list probe (v4.1: itv/get_ordered_list page 1
+                    // — OTT's flow skips stb/get_profile entirely); we keep
+                    // the first method that yields real channel data.
                     // v3.7: ladder order verified — AuthMethod enum ordinal
                     // is BEARER(0) → TOKEN_PARAM(1) → TOKEN_COOKIE(2) →
                     // MAC_ONLY(3), and methodIndex starts at the current
@@ -919,20 +949,45 @@ class StalkerApi(
 
     // -------------------------------------------------------------- actions
 
-    /** Returns the raw profile JSON object of the box. */
+    /**
+     * Returns the raw profile JSON object of the box.
+     *
+     * v4.1: validates via itv/get_ordered_list page 1 instead of
+     * stb/get_profile. Dominic's packet capture proved OTT Navigator NEVER
+     * calls stb/get_profile — its flow is handshake → get_ordered_list
+     * directly. bingeiptv.xyz returns EMPTY for get_profile even with the
+     * v4.0 packet-capture-verified MAG format, while get_ordered_list
+     * works. Real channel data ({"js":{"data":[... with >= 1 item) is the
+     * proof the session works; a synthetic profile (id = the MAC) is
+     * returned so [isMacRegistered] keeps working for callers.
+     *
+     * Graceful degradation: when the portal's get_profile is broken but
+     * channels load, the session is valid — profile/account detail screens
+     * show MAC + portal instead of crashing.
+     */
     suspend fun getProfile(): JSONObject = withSession {
-        val profile = jsPayload(get("stb", "get_profile"))
-        // v2.5: id:null means the portal doesn't associate this session with
-        // a user — the token is dead OR the MAC isn't registered. Throw the
-        // marker so withSession re-handshakes and retries once before
-        // concluding the MAC is unregistered.
-        if (!isMacRegistered(profile)) {
+        val js = jsPayload(get("itv", "get_ordered_list", mapOf("p" to "1")))
+        val data = js.optJSONArray("data")
+        // v2.5: no channel data means the portal doesn't associate this
+        // session with a user — the token is dead OR the MAC isn't
+        // registered. Throw the marker so withSession re-handshakes and
+        // retries (then walks the auth-method ladder) before concluding
+        // the MAC is unregistered.
+        if (data == null || data.length() == 0) {
             throw StalkerException(
-                "Portal returned an empty profile (id:null)",
+                "Portal returned no channel data",
                 isAuthFailure = true
             )
         }
-        profile
+        android.util.Log.i(
+            "StalkerApi",
+            "getProfile: session valid, channel page 1 has ${data.length()} items"
+        )
+        // Synthetic profile — the portal's stb/get_profile is unreliable
+        // (returns empty on some panels), but channel data proves the MAC
+        // is registered. Callers (MainActivity connect flow) check
+        // isMacRegistered(), which passes on this non-blank id.
+        JSONObject().put("id", mac).put("mac", mac)
     }
 
     /**
