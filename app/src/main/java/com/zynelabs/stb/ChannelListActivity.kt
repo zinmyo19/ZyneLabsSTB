@@ -76,10 +76,7 @@ class ChannelListActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                val api = StalkerApi(
-                    Prefs.getPortalUrl(this@ChannelListActivity),
-                    Prefs.getMac(this@ChannelListActivity)
-                )
+                val api = StalkerSession.get(this@ChannelListActivity)
                 var channels = api.getAllChannels()
                 val genreId = intent.getStringExtra(EXTRA_GENRE_ID)
                 if (!genreId.isNullOrEmpty()) {
@@ -119,10 +116,7 @@ class ChannelListActivity : AppCompatActivity() {
         epgJob = lifecycleScope.launch {
             delay(350) // debounce fast D-pad scrolling
             try {
-                val api = StalkerApi(
-                    Prefs.getPortalUrl(this@ChannelListActivity),
-                    Prefs.getMac(this@ChannelListActivity)
-                )
+                val api = StalkerSession.get(this@ChannelListActivity)
                 val programs = api.getEpg(channel.id, todayString())
                 if (programs.isEmpty()) {
                     binding.tvEpgNow.text = getString(R.string.epg_none)
