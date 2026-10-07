@@ -3,6 +3,11 @@
     <string name="app_name">ZyneLabs STB</string>
 
     <string name="settings_title">Portal Settings</string>
+    <string name="provider_label">Provider</string>
+    <string name="provider_new">+ New provider</string>
+    <string name="delete">Delete</string>
+    <string name="delete_provider_title">Delete provider?</string>
+    <string name="delete_provider_msg">Delete %1$s?</string>
     <string name="portal_url_label">Stalker Portal URL</string>
     <string name="portal_url_hint">http://example.com:8080/c</string>
     <string name="mac_label">Box MAC Address</string>
