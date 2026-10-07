@@ -37,6 +37,11 @@ class MainActivity : AppCompatActivity() {
         binding.etMac.setText(Prefs.getMac(this))
 
         binding.btnConnect.setOnClickListener { connect() }
+
+        // Settings reachable without a successful connection.
+        binding.btnSettings.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
     }
 
     private fun connect() {
