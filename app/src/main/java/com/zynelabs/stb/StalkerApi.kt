@@ -1,6 +1,8 @@
 package com.zynelabs.stb
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.Cookie
 import okhttp3.CookieJar
@@ -78,6 +80,17 @@ class StalkerApi(
 
     @Volatile
     private var token: String? = null
+
+    /**
+     * v2.7: serializes handshakes. The portal enforces one session per MAC —
+     * every new handshake invalidates the previous token. Without this lock,
+     * concurrent auth-failure recoveries (multiple activities/threads) each
+     * handshake, invalidating each other's tokens in a livelock. All
+     * handshake() call sites in the recovery paths go through
+     * [handshakeIfStale], which skips the handshake when another thread
+     * already refreshed the token.
+     */
+    private val handshakeMutex = Mutex()
 
     private val cookieJar = MemoryCookieJar()
 
@@ -223,7 +236,13 @@ class StalkerApi(
         snippetLen: Int = 100
     ): ProbeResult = withContext(Dispatchers.IO) {
         try {
-            if (token.isNullOrBlank()) handshake()
+            // v2.7: serialize — the probe must not invalidate the app's
+            // session token with a concurrent handshake.
+            if (token.isNullOrBlank()) {
+                handshakeMutex.withLock {
+                    if (token.isNullOrBlank()) handshake()
+                }
+            }
             val url = ("$baseUrl/portal.php").toHttpUrlOrNull()?.newBuilder()
                 ?: return@withContext ProbeResult(-1, 0, "", "Invalid portal URL")
             url.addQueryParameter("type", type)
@@ -280,7 +299,12 @@ class StalkerApi(
         extra: Map<String, String> = emptyMap()
     ): ProbeResult = withContext(Dispatchers.IO) {
         try {
-            if (token.isNullOrBlank()) handshake()
+            // v2.7: serialize (see probe()).
+            if (token.isNullOrBlank()) {
+                handshakeMutex.withLock {
+                    if (token.isNullOrBlank()) handshake()
+                }
+            }
             val form = okhttp3.FormBody.Builder()
                 .add("type", type)
                 .add("action", action)
@@ -319,6 +343,24 @@ class StalkerApi(
     }
 
     /**
+     * v2.7: performs [handshake] only if the token is still [staleToken]
+     * (or blank). Callers capture the token that just failed; if another
+     * thread refreshed it while we waited for [handshakeMutex], we skip the
+     * handshake and retry with the fresh token instead of invalidating it.
+     * @return true if a handshake was performed.
+     */
+    private suspend fun handshakeIfStale(staleToken: String?): Boolean {
+        return handshakeMutex.withLock {
+            if (token == staleToken || token.isNullOrBlank()) {
+                handshake()
+                true
+            } else {
+                false
+            }
+        }
+    }
+
+    /**
      * Runs [block], performing a handshake first when there is no token and
      * self-healing when the portal rejects the session.
      *
@@ -334,21 +376,29 @@ class StalkerApi(
      */
     private suspend fun <T> withSession(block: suspend () -> T): T {
         if (token.isNullOrBlank()) {
-            handshake()
+            // v2.7: serialize even the first handshake — several activities
+            // starting at once must not handshake concurrently.
+            handshakeMutex.withLock {
+                if (token.isNullOrBlank()) handshake()
+            }
         }
+        // Token the upcoming call(s) will use; captured so the recovery
+        // below can tell whether another thread refreshed it meanwhile.
+        val attemptToken = token
         try {
             return block()
         } catch (e: IOException) {
             // Transient network failure: retry on a fresh connection with the
             // existing token first. Re-handshake only as a last resort, since
-            // the portal RSTs duplicate handshakes for one MAC.
+            // the portal invalidates the previous token on each handshake.
             client.connectionPool.evictAll()
             delay(1000)
             try {
                 return block()
             } catch (e2: StalkerException) {
                 if (isAuthFailure(e2)) {
-                    handshake()
+                    // v2.7: serialized; skips when another thread refreshed.
+                    handshakeIfStale(attemptToken)
                     try {
                         return block()
                     } catch (retryEx: Exception) {
@@ -360,7 +410,10 @@ class StalkerApi(
         } catch (e: StalkerException) {
             if (!isAuthFailure(e)) throw e
             val originalError = e
-            handshake() // fresh token; buildHeaders() uses it for the retry
+            // v2.7: serialized re-handshake — if a sibling thread already
+            // refreshed the token, reuse it instead of invalidating it.
+            // (buildHeaders() picks up the current token for the retry.)
+            handshakeIfStale(attemptToken)
             try {
                 return block()
             } catch (retryEx: Exception) {
@@ -432,6 +485,13 @@ class StalkerApi(
         val js = jsPayload(get(type, "create_link", mapOf("cmd" to cmd)))
         var link = js.optString("cmd", "").trim()
         if (link.isBlank()) {
+            // v2.7: don't swallow the evidence — log the input cmd and the
+            // raw portal reply for logcat debugging (UI message stays clean).
+            android.util.Log.w(
+                "StalkerApi",
+                "createLink: empty stream URL; inCmd=${cmd.take(150)} " +
+                    "js=${js.toString().take(300)}"
+            )
             throw StalkerException("Portal returned no stream URL")
         }
         for (prefix in arrayOf("ffmpeg ", "ffprobe ")) {
