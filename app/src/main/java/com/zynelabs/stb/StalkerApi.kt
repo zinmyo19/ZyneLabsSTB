@@ -59,6 +59,14 @@ import kotlinx.coroutines.delay
  * handshake succeeds and headers are clean, but get_profile still
  * returns empty for all four auth methods; the wire details of that
  * first (Bearer) attempt are what we need to diagnose next.
+ *
+ * v3.7: stale-token hardening. v3.6 diagnostics LOOKED like get_profile
+ * was using a stale token (handshake token != profile URL token), but
+ * that was a debug artifact — the capture fired once per instance while
+ * the auth ladder handshakes once per method. handshake() now resets
+ * the profile capture so Copy Debug Info always reflects the CURRENT
+ * session, and get() logs "TOKEN MISMATCH!" if the wire token ever
+ * differs from the most recent handshake token (real race detection).
  */
 class StalkerApi(
     portalUrl: String,
@@ -105,6 +113,17 @@ class StalkerApi(
 
     @Volatile
     private var token: String? = null
+
+    /**
+     * v3.7: the token issued by the most recent successful [handshake].
+     * The freshness anchor for the TOKEN MISMATCH assertion in [get]:
+     * every API call must go out with exactly this token. A mismatch
+     * means a concurrent handshake() invalidated the token between our
+     * handshake and this request (one-session-per-MAC portals kill the
+     * old token the moment a new handshake lands).
+     */
+    @Volatile
+    private var lastHandshakeToken: String? = null
 
     /**
      * v3.1: which wire format carries the session token. BEARER (v2.4,
@@ -312,6 +331,22 @@ class StalkerApi(
     ): JSONObject = withContext(Dispatchers.IO) {
         val url = buildUrl(type, action, extra)
         val headers = buildHeaders()
+        // v3.7: stale-token assertion. The token on the wire must be the
+        // one from the most recent handshake() — a mismatch means a
+        // concurrent handshake() (another coroutine's auth-failure
+        // recovery) invalidated our token between our handshake and this
+        // request. One-session-per-MAC portals answer the dead token with
+        // HTTP 200 + empty body, which withSession then heals via retry.
+        val wireToken = token
+        val freshToken = lastHandshakeToken
+        if (wireToken != freshToken) {
+            android.util.Log.w(
+                "StalkerApi",
+                "TOKEN MISMATCH! wire=${wireToken?.take(8)}... " +
+                    "lastHandshake=${freshToken?.take(8)}... " +
+                    "action=$action authMethod=$authMethod"
+            )
+        }
         val request = Request.Builder()
             .url(url)
             .headers(headers)
@@ -319,12 +354,12 @@ class StalkerApi(
         client.newCall(request).execute().use { response ->
             val code = response.code
             val body = response.body?.string().orEmpty()
-            // v3.6: capture the FIRST get_profile request in full — URL,
-            // redacted headers, HTTP code, and body — BEFORE the
-            // success/empty checks, so Copy Debug Info shows the wire
-            // reality even for 200-with-empty responses. First attempt
-            // only (the Bearer attempt, the standard wire format); the
-            // auth-method ladder must not overwrite it.
+            // v3.7: capture the first get_profile AFTER each handshake().
+            // handshake() resets these fields, so Copy Debug Info always
+            // shows the CURRENT session's attempt. (v3.6 captured once per
+            // instance, which mixed the last handshake's token with an
+            // earlier ladder step's get_profile token — looked like a
+            // stale-token bug in diagnostics, but was stale diagnostics.)
             if (type == "stb" && action == "get_profile" && debugProfileUrl == null) {
                 debugProfileUrl = url.toString()
                 debugProfileHeaders = debugHeaderDump(headers)
@@ -498,6 +533,16 @@ class StalkerApi(
      */
     suspend fun handshake(): String {
         token = null
+        // v3.7: reset the per-session get_profile capture. The
+        // StalkerSession singleton reuses this instance across connects,
+        // and the auth ladder handshakes once per method — without this
+        // reset, Copy Debug Info would show a previous session/ladder
+        // step's get_profile URL (with its token) next to the current
+        // handshake's token: a misleading "stale token" in diagnostics.
+        debugProfileUrl = null
+        debugProfileHeaders = null
+        debugProfileHttpCode = null
+        debugProfileBody = null
         syncTokenCookie() // drop any stale token cookie before handshaking
         // v3.4: NO stb_type param — clean OTT-like request (was MAG250).
         debugHandshakeUrl = buildUrl("stb", "handshake").toString()
@@ -519,6 +564,10 @@ class StalkerApi(
             throw StalkerException("Handshake failed: no token issued")
         }
         token = newToken
+        // v3.7: freshness anchor — set IMMEDIATELY after parsing, before
+        // any other API call can run. get() asserts the wire token
+        // matches this (TOKEN MISMATCH log otherwise).
+        lastHandshakeToken = newToken
         syncTokenCookie() // TOKEN_COOKIE: publish the fresh token as a cookie
         return newToken
     }
@@ -691,7 +740,20 @@ class StalkerApi(
                     // Each tryAuthMethod does its own clean handshake +
                     // profile probe; we keep the first method that yields a
                     // valid profile id.
+                    // v3.7: ladder order verified — AuthMethod enum ordinal
+                    // is BEARER(0) → TOKEN_PARAM(1) → TOKEN_COOKIE(2) →
+                    // MAC_ONLY(3), and methodIndex starts at the current
+                    // method (BEARER on a fresh instance), so the Bearer
+                    // header is always tried FIRST. The v3.6 "first
+                    // attempt showed token=" confusion was the stale
+                    // per-instance capture (fixed: handshake() now resets
+                    // the capture), not a ladder-order bug.
                     val methods = AuthMethod.values()
+                    android.util.Log.w(
+                        "StalkerApi",
+                        "withSession: ladder starting from ${methods[methodIndex]}, " +
+                            "order=${methods.joinToString("→")}"
+                    )
                     var foundWorking = false
                     while (methodIndex < methods.size - 1 && !foundWorking) {
                         methodIndex++
