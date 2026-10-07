@@ -557,7 +557,62 @@ class StalkerApi(
                 break
             }
         }
+        // v2.9: sanitize mangled stream URLs. This portal sometimes returns
+        // URLs with the hostname embedded mid-path, e.g.
+        //   http://h/p1/p2/d.com:80/p1/p2/303367?play_token=X
+        // (note "d.com:80" = truncated host). Rebuild cleanly so ExoPlayer
+        // gets a playable URL.
+        link = sanitizeStreamUrl(link)
         link
+    }
+
+    /**
+     * v2.9: repairs portal-mangled stream URLs. Detects a path segment that
+     * looks like an embedded host:port (contains ':') and rebuilds the URL
+     * as scheme://host/<segments before the bad one>/<last segment>?query.
+     * Returns the input unchanged when no mangling is detected or parsing
+     * fails.
+     */
+    private fun sanitizeStreamUrl(url: String): String {
+        val httpUrl = try {
+            url.toHttpUrlOrNull() ?: return url
+        } catch (e: Exception) {
+            return url
+        }
+        val segments = httpUrl.pathSegments
+        val badIndex = segments.indexOfFirst { it.contains(":") }
+        if (badIndex < 0) return url
+        android.util.Log.i(
+            "StalkerApi",
+            "sanitizeStreamUrl: mangled URL detected, rebuilding: ${url.take(200)}"
+        )
+        val builder = HttpUrl.Builder()
+            .scheme(httpUrl.scheme)
+            .host(httpUrl.host)
+        val defaultPort = HttpUrl.defaultPort(httpUrl.scheme)
+        if (httpUrl.port != defaultPort) builder.port(httpUrl.port)
+        // Keep segments before the embedded host, then the final segment
+        // (the stream ID). e.g. [p1, p2, d.com:80, p1, p2, 303367]
+        // becomes [p1, p2, 303367].
+        val head = segments.subList(0, badIndex)
+        for (seg in head) {
+            builder.addPathSegment(seg)
+        }
+        // Append the final segment (stream ID) unless it IS the bad segment.
+        if (badIndex < segments.size - 1) {
+            val last = segments.last()
+            if (head.lastOrNull() != last) {
+                builder.addPathSegment(last)
+            }
+        }
+        for (i in 0 until httpUrl.querySize) {
+            builder.addQueryParameter(
+                httpUrl.queryParameterName(i),
+                httpUrl.queryParameterValue(i)
+            )
+        }
+        httpUrl.fragment?.let { builder.fragment(it) }
+        return builder.build().toString()
     }
 
     /**
