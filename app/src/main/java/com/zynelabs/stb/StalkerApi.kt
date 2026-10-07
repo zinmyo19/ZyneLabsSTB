@@ -156,15 +156,16 @@ class StalkerApi(
 
     // ------------------------------------------------------------------ HTTP
 
-    /** The MAG-box fingerprint headers sent with every portal request. */
+    /** The client fingerprint headers sent with every portal request.
+     * v3.3: identifies as OTT Navigator (per user approval) instead of a
+     * MAG box — the portal was likely filtering our MAG200 UA after the
+     * day's heavy probing, while OTT's UA works from the same IP. */
     private fun buildHeaders(): okhttp3.Headers {
         val b = okhttp3.Headers.Builder()
             .add(
                 "User-Agent",
-                "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 " +
-                    "(KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3"
+                "OTT Navigator/1.6.9.9 (Linux;Android 13; en; 00000000)"
             )
-            .add("X-User-Agent", "Model: MAG250; Link: Ethernet")
             .add("Referer", "$baseUrl/")
             .add("X-Requested-With", "XMLHttpRequest")
         // v2.4: the session token travels as an Authorization: Bearer header
