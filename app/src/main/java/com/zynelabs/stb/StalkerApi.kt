@@ -150,15 +150,16 @@ class StalkerApi(portalUrl: String, private val mac: String) {
         try {
             return block()
         } catch (e: IOException) {
-            // Stale pooled connection or transient reset: drop pooled
-            // connections, re-handshake on a fresh one, retry once.
+            // Transient network failure: retry on a fresh connection with the
+            // existing token first. Re-handshake only as a last resort, since
+            // the portal RSTs duplicate handshakes for one MAC.
             client.connectionPool.evictAll()
             delay(1000)
-            handshake()
-            return try {
-                block()
-            } catch (e2: IOException) {
-                throw StalkerException("Connection lost. Please retry.")
+            try {
+                return block()
+            } catch (e2: Exception) {
+                handshake()
+                return block()
             }
         } catch (e: StalkerException) {
             // Token probably expired — get a fresh one and retry once.
@@ -335,5 +336,31 @@ class StalkerApi(portalUrl: String, private val mac: String) {
             store.removeAll { it.expiresAt <= now }
             return store.toList()
         }
+    }
+}
+
+/** One shared StalkerApi per portal/MAC for the whole process.
+ *  The portal allows a single session per MAC and RSTs duplicate handshakes,
+ *  so every screen MUST reuse this instead of constructing StalkerApi directly. */
+object StalkerSession {
+    @Volatile private var api: StalkerApi? = null
+    @Volatile private var key: String? = null
+
+    @Synchronized
+    fun get(context: android.content.Context): StalkerApi {
+        val url = Prefs.getPortalUrl(context)
+        val mac = Prefs.getMac(context)
+        val k = "$url|$mac"
+        if (api == null || key != k) {
+            key = k
+            api = StalkerApi(url, mac)
+        }
+        return api!!
+    }
+
+    @Synchronized
+    fun reset() {
+        api = null
+        key = null
     }
 }
