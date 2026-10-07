@@ -51,15 +51,29 @@ class RadioActivity : AppCompatActivity() {
             try {
                 val api = StalkerSession.get(this@RadioActivity)
                 val genres = try {
-                    api.getGenres().associate { it.id to it.title.lowercase() }
+                    api.getGenres()
                 } catch (e: Exception) {
-                    emptyMap()
+                    emptyList()
                 }
-                val stations = api.getAllChannels().filter { ch ->
-                    val name = ch.name.lowercase()
-                    val genre = genres[ch.genreId].orEmpty()
-                    "radio" in name || "radio" in genre ||
-                        "music" in name || "fm" in name
+                // v2.8: paginated (get_all_channels' 25MB response is
+                // unreliable). Prefer radio-specific genres when the portal
+                // has them; fall back to name-filtering the first pages.
+                val radioGenreIds = genres.filter {
+                    val t = it.title.lowercase()
+                    "radio" in t || "music" in t || "fm" in t
+                }.map { it.id }
+                val stations = if (radioGenreIds.isNotEmpty()) {
+                    radioGenreIds.flatMap { gid ->
+                        api.getChannelsPaginated(gid, maxPages = 10)
+                    }
+                } else {
+                    val genreTitles = genres.associate { it.id to it.title.lowercase() }
+                    api.getChannelsPaginated(null, maxPages = 20).filter { ch ->
+                        val name = ch.name.lowercase()
+                        val genre = genreTitles[ch.genreId].orEmpty()
+                        "radio" in name || "radio" in genre ||
+                            "music" in name || "fm" in name
+                    }
                 }
                 cmdById.clear()
                 for (s in stations) cmdById[s.id] = s.cmd
