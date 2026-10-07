@@ -39,7 +39,7 @@ class StalkerApi(
     context: android.content.Context
 ) {
 
-    class StalkerException(message: String) : Exception(message)
+    open class StalkerException(message: String) : Exception(message)
 
     /**
      * Marker for auth/session failures that warrant a re-handshake + retry.
