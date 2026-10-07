@@ -30,8 +30,12 @@ import kotlinx.coroutines.delay
  * portal reports an invalid/expired token.
  *
  * v2.4 protocol shape (stock Ministra, Wireshark-verified):
- * - handshake: GET portal.php?type=stb&action=handshake&JsHttpRequest=1-xml
+ * - handshake: GET portal.php?type=stb&action=handshake
  *   (MAC travels in the mac cookie only, no token param)
+ *   v3.5: JsHttpRequest=1-xml REMOVED — it was the MAG web-UI's AJAX
+ *   library marker (browser artifact); native apps like OTT never send it.
+ *   The portal's handshake is lenient but get_profile rejects mixed
+ *   native-app-UA + browser-artifact clients as spoofing (v3.4 debug).
  * - every later call: same URL shape + `Authorization: Bearer <token>` header.
  *   Never a token= or mac= query param — those break session association.
  *
@@ -215,15 +219,17 @@ class StalkerApi(
     /** The client fingerprint headers sent with every portal request.
      * v3.3: identifies as OTT Navigator (per user approval) instead of a
      * MAG box — the portal was likely filtering our MAG200 UA after the
-     * day's heavy probing, while OTT's UA works from the same IP. */
+     * day's heavy probing, while OTT's UA works from the same IP.
+     * v3.5: clean native-app headers ONLY — the v3.4 debug dump proved
+     * the handshake succeeds but get_profile rejects clients that mix a
+     * native-app UA with browser/web-UI artifacts (X-Requested-With and
+     * Referer are never sent by native apps). */
     private fun buildHeaders(): okhttp3.Headers {
         val b = okhttp3.Headers.Builder()
             .add(
                 "User-Agent",
                 "OTT Navigator/1.6.9.9 (Linux;Android 13; en; 00000000)"
             )
-            .add("Referer", "$baseUrl/")
-            .add("X-Requested-With", "XMLHttpRequest")
         // v2.4: the session token travels as an Authorization: Bearer header
         // (stock Ministra behavior, Wireshark-verified) — never as a token=
         // query param. The MAC travels in the mac cookie only.
@@ -248,7 +254,10 @@ class StalkerApi(
             ?: throw StalkerException("Invalid portal URL")
         builder.addQueryParameter("type", type)
         builder.addQueryParameter("action", action)
-        builder.addQueryParameter("JsHttpRequest", "1-xml")
+        // v3.5: NO JsHttpRequest=1-xml — that's the MAG web-UI's AJAX
+        // library marker (browser artifact). Native apps like OTT Navigator
+        // never send it; the portal's get_profile is strict about it even
+        // though the handshake is lenient.
         // v2.4: NO token=/mac= query params. Token goes in the Authorization:
         // Bearer header (see buildHeaders()); MAC goes in the mac cookie.
         // Stock Ministra behavior — sending them as query params makes the
@@ -359,7 +368,7 @@ class StalkerApi(
                 ?: return@withContext ProbeResult(-1, 0, "", "Invalid portal URL")
             url.addQueryParameter("type", type)
             url.addQueryParameter("action", action)
-            url.addQueryParameter("JsHttpRequest", "1-xml")
+            // v3.5: no JsHttpRequest (browser/web-UI artifact — see buildUrl)
             // v2.4: no token=/mac= query params (Bearer header + mac cookie)
             // v3.1: ...except on TOKEN_PARAM portals, which get token=.
             // v2.3: no device IDs
@@ -405,7 +414,7 @@ class StalkerApi(
         }
 
     /**
-     * POST variant of [probe]: sends type/action/JsHttpRequest as a form body
+     * POST variant of [probe]: sends type/action as a form body
      * instead of query params (token via Bearer header, MAC via cookie).
      * Some panels only accept POST for data actions. Never throws.
      */
@@ -424,7 +433,7 @@ class StalkerApi(
             val form = okhttp3.FormBody.Builder()
                 .add("type", type)
                 .add("action", action)
-                .add("JsHttpRequest", "1-xml")
+            // v3.5: no JsHttpRequest (browser/web-UI artifact — see buildUrl)
             // v2.4: no token/mac in body (Bearer header + mac cookie)
             // v3.1: ...except on TOKEN_PARAM portals, which get token=.
             // v2.3: no device IDs
