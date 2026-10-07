@@ -27,17 +27,27 @@ import kotlinx.coroutines.delay
  * The token is obtained via [handshake] and refreshed automatically when the
  * portal reports an invalid/expired token.
  */
-class StalkerApi(portalUrl: String, private val mac: String) {
+class StalkerApi(
+    portalUrl: String,
+    private val mac: String,
+    context: android.content.Context
+) {
 
     class StalkerException(message: String) : Exception(message)
 
     private val baseUrl: String = portalUrl.trim().trimEnd('/')
+
+    /** Full MAG hardware identity, stable per install (see DeviceIds). */
+    private val deviceIds: DeviceIds = DeviceIds.get(context)
 
     /** Base portal URL (shown in the on-device Portal API Probe header). */
     val probePortalUrl: String get() = baseUrl
 
     /** Box MAC (shown in the on-device Portal API Probe header). */
     val probeBoxMac: String get() = mac
+
+    /** Device fingerprint summary (shown in the on-device Probe header). */
+    val probeDeviceIds: String get() = deviceIds.summary()
 
     @Volatile
     private var token: String? = null
@@ -95,10 +105,27 @@ class StalkerApi(portalUrl: String, private val mac: String) {
         builder.addQueryParameter("JsHttpRequest", "1-xml")
         token?.let { builder.addQueryParameter("token", it) }
         builder.addQueryParameter("mac", mac)
+        addDeviceParams(builder)
         for ((key, value) in extra) {
             builder.addQueryParameter(key, value)
         }
         return builder.build()
+    }
+
+    /** MAG hardware fingerprint query params, sent with every request. */
+    private fun addDeviceParams(builder: HttpUrl.Builder) {
+        builder.addQueryParameter("sn", deviceIds.sn)
+        builder.addQueryParameter("device_id", deviceIds.deviceId)
+        builder.addQueryParameter("device_id2", deviceIds.deviceId2)
+        builder.addQueryParameter("signature", deviceIds.signature)
+    }
+
+    /** MAG hardware fingerprint form params (POST variant). */
+    private fun addDeviceParams(form: okhttp3.FormBody.Builder) {
+        form.add("sn", deviceIds.sn)
+        form.add("device_id", deviceIds.deviceId)
+        form.add("device_id2", deviceIds.deviceId2)
+        form.add("signature", deviceIds.signature)
     }
 
     private suspend fun get(
@@ -177,6 +204,7 @@ class StalkerApi(portalUrl: String, private val mac: String) {
             url.addQueryParameter("JsHttpRequest", "1-xml")
             token?.let { url.addQueryParameter("token", it) }
             url.addQueryParameter("mac", mac)
+            addDeviceParams(url)
             for ((k, v) in extra) {
                 url.addQueryParameter(k, v)
             }
@@ -233,6 +261,7 @@ class StalkerApi(portalUrl: String, private val mac: String) {
                 .add("JsHttpRequest", "1-xml")
             token?.let { form.add("token", it) }
             form.add("mac", mac)
+            addDeviceParams(form)
             for ((k, v) in extra) form.add(k, v)
             val req = Request.Builder()
                 .url("$baseUrl/portal.php")
@@ -255,7 +284,7 @@ class StalkerApi(portalUrl: String, private val mac: String) {
      */
     suspend fun handshake(): String {
         token = null
-        val js = jsPayload(get("stb", "handshake"))
+        val js = jsPayload(get("stb", "handshake", mapOf("stb_type" to "MAG250")))
         val newToken = js.optString("token", "")
         if (newToken.isBlank()) {
             throw StalkerException("Handshake failed: no token issued")
@@ -479,7 +508,7 @@ object StalkerSession {
         val k = "$url|$mac"
         if (api == null || key != k) {
             key = k
-            api = StalkerApi(url, mac)
+            api = StalkerApi(url, mac, context)
         }
         return api!!
     }
