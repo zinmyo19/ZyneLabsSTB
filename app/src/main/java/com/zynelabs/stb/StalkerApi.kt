@@ -4,12 +4,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Cookie
 import okhttp3.CookieJar
+import okhttp3.ConnectionPool
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import java.io.IOException
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.delay
 
 /**
  * Minimal Stalker Middleware API client (portal.php).
@@ -36,6 +39,7 @@ class StalkerApi(portalUrl: String, private val mac: String) {
 
     private val client: OkHttpClient = OkHttpClient.Builder()
         .cookieJar(cookieJar)
+        .connectionPool(ConnectionPool(5, 30, TimeUnit.SECONDS))
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .build()
@@ -135,6 +139,9 @@ class StalkerApi(portalUrl: String, private val mac: String) {
     /**
      * Runs [block], performing a handshake first when there is no token and
      * re-handshaking once when the portal rejects the current token.
+     * Also recovers from a stale pooled connection (server closed its side
+     * while OkHttp still held it): evicts the pool, waits a beat,
+     * re-handshakes on a fresh connection and retries once.
      */
     private suspend fun <T> withSession(block: suspend () -> T): T {
         if (token.isNullOrBlank()) {
@@ -142,6 +149,17 @@ class StalkerApi(portalUrl: String, private val mac: String) {
         }
         try {
             return block()
+        } catch (e: IOException) {
+            // Stale pooled connection or transient reset: drop pooled
+            // connections, re-handshake on a fresh one, retry once.
+            client.connectionPool.evictAll()
+            delay(1000)
+            handshake()
+            return try {
+                block()
+            } catch (e2: IOException) {
+                throw StalkerException("Connection lost. Please retry.")
+            }
         } catch (e: StalkerException) {
             // Token probably expired — get a fresh one and retry once.
             handshake()
