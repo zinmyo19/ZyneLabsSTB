@@ -138,8 +138,12 @@ class StalkerApi(
         // Stock Ministra behavior — sending them as query params makes the
         // portal unable to associate requests with the session (id:null).
         // v2.3: no device IDs (sn/device_id/device_id2/signature).
+        // v2.6: extra params (notably the channel `cmd` for create_link, which
+        // is itself a URL) are sent UNENCODED. v2.2 proved this portal does
+        // naive query parsing without URL-decoding — an encoded cmd like
+        // "ffmpeg%20http%3A%2F%2F..." would never match server-side.
         for ((key, value) in extra) {
-            builder.addQueryParameter(key, value)
+            builder.addEncodedQueryParameter(key, value)
         }
         return builder.build()
     }
@@ -431,6 +435,26 @@ class StalkerApi(
             }
         }
         link
+    }
+
+    /**
+     * Probe helper (v2.6): resolves the first channel from itv/get_ordered_list
+     * via [createLink] and returns a one-line summary. For the on-device
+     * Portal API Probe — reveals the cmd format the portal returns
+     * (http/https = ExoPlayer-playable; udp/rtmp = black screen explained).
+     */
+    suspend fun probeCreateLink(): String = withSession {
+        val js = jsPayload(get("itv", "get_ordered_list", mapOf("p" to "1")))
+        val data = js.optJSONArray("data")
+            ?: throw StalkerException("No channel data in get_ordered_list")
+        if (data.length() == 0) throw StalkerException("Empty channel list")
+        val first = data.getJSONObject(0)
+        val id = first.optString("id", "?")
+        val name = first.optString("name", "?")
+        val cmd = first.optString("cmd", "")
+        if (cmd.isBlank()) throw StalkerException("First channel (id=$id) has no cmd")
+        val link = createLink(cmd, "itv")
+        "ch[$id $name] cmd=${cmd.take(100)} => link=${link.take(200)}"
     }
 
     // -------------------------------------------------------------- genres
