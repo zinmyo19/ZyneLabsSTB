@@ -178,7 +178,10 @@ class MainActivity : AppCompatActivity() {
                 StalkerSession.reset() // URL/MAC may have changed on the setup screen
                 val api = StalkerSession.get(this@MainActivity)
                 api.handshake()
-                api.getProfile() // validates the session works
+                val profile = api.getProfile() // validates the session works
+                if (!api.isMacRegistered(profile)) {
+                    throw StalkerApi.StalkerException("MAC not registered on this portal")
+                }
                 startActivity(Intent(this@MainActivity, HomeActivity::class.java))
                 finish()
                 binding.tvStatus.text = ""
