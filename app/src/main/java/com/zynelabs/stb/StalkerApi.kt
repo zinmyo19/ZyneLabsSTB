@@ -33,6 +33,12 @@ class StalkerApi(portalUrl: String, private val mac: String) {
 
     private val baseUrl: String = portalUrl.trim().trimEnd('/')
 
+    /** Base portal URL (shown in the on-device Portal API Probe header). */
+    val probePortalUrl: String get() = baseUrl
+
+    /** Box MAC (shown in the on-device Portal API Probe header). */
+    val probeBoxMac: String get() = mac
+
     @Volatile
     private var token: String? = null
 
@@ -186,6 +192,62 @@ class StalkerApi(portalUrl: String, private val mac: String) {
     }
 
     // -------------------------------------------------------------- session
+
+    /**
+     * Raw probe of an arbitrary URL (plain GET, no API params, no token).
+     * Used by the on-device Portal API Probe to fetch the portal index page
+     * and identify what system the portal actually runs.
+     * Returns Triple(httpCode, detail, error) where
+     * detail = "<content-type> len=<n> <first 150 chars>". Never throws.
+     */
+    suspend fun probeRaw(url: String): Triple<Int, String, String> =
+        withContext(Dispatchers.IO) {
+            try {
+                val req = Request.Builder().url(url).headers(buildHeaders()).get().build()
+                client.newCall(req).execute().use { resp ->
+                    val body = resp.body?.string().orEmpty()
+                    val ct = resp.header("Content-Type", "?") ?: "?"
+                    val snippet = body.replace(Regex("\\s+"), " ").take(150)
+                    Triple(resp.code, "$ct len=${body.length} $snippet", "")
+                }
+            } catch (e: Exception) {
+                Triple(-1, "", (e.message ?: e.javaClass.simpleName).take(80))
+            }
+        }
+
+    /**
+     * POST variant of [probe]: sends type/action/JsHttpRequest/token/mac as
+     * a form body instead of query params. Some panels only accept POST for
+     * data actions. Never throws.
+     */
+    suspend fun probePost(
+        type: String,
+        action: String,
+        extra: Map<String, String> = emptyMap()
+    ): ProbeResult = withContext(Dispatchers.IO) {
+        try {
+            if (token.isNullOrBlank()) handshake()
+            val form = okhttp3.FormBody.Builder()
+                .add("type", type)
+                .add("action", action)
+                .add("JsHttpRequest", "1-xml")
+            token?.let { form.add("token", it) }
+            form.add("mac", mac)
+            for ((k, v) in extra) form.add(k, v)
+            val req = Request.Builder()
+                .url("$baseUrl/portal.php")
+                .headers(buildHeaders())
+                .post(form.build())
+                .build()
+            client.newCall(req).execute().use { resp ->
+                val body = resp.body?.string().orEmpty()
+                val snippet = body.replace(Regex("\\s+"), " ").take(100)
+                ProbeResult(resp.code, body.length, snippet, "")
+            }
+        } catch (e: Exception) {
+            ProbeResult(-1, 0, "", (e.message ?: e.javaClass.simpleName).take(80))
+        }
+    }
 
     /**
      * Performs the handshake and stores the session token.
