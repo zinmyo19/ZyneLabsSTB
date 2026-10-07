@@ -3,6 +3,7 @@ package com.zynelabs.stb
 import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.isVisible
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.zynelabs.stb.databinding.ActivityListBinding
 
@@ -29,6 +30,7 @@ class SettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityListBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        binding.progressBar.isVisible = false // static list, nothing to load
 
         binding.tvTitle.text = getString(R.string.section_settings)
         binding.recyclerView.layoutManager = LinearLayoutManager(this)
