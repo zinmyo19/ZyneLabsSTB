@@ -32,11 +32,29 @@ class StalkerApi(portalUrl: String, private val mac: String) {
     @Volatile
     private var token: String? = null
 
+    private val cookieJar = MemoryCookieJar()
+
     private val client: OkHttpClient = OkHttpClient.Builder()
-        .cookieJar(MemoryCookieJar())
+        .cookieJar(cookieJar)
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .build()
+
+    init {
+        // Pre-seed the STB cookies a real MAG box sends with every request.
+        val portalHttp = ("$baseUrl/").toHttpUrlOrNull()
+        if (portalHttp != null) {
+            cookieJar.seed(
+                portalHttp,
+                listOf(
+                    Cookie.Builder().name("mac").value(mac).url(portalHttp).build(),
+                    Cookie.Builder().name("stb_lang").value("en").url(portalHttp).build(),
+                    Cookie.Builder().name("timezone").value("Asia/Kuala_Lumpur")
+                        .url(portalHttp).build()
+                )
+            )
+        }
+    }
 
     // ------------------------------------------------------------------ HTTP
 
@@ -67,9 +85,10 @@ class StalkerApi(portalUrl: String, private val mac: String) {
             .url(buildUrl(type, action, extra))
             .header(
                 "User-Agent",
-                "Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 " +
-                    "(KHTML, like Gecko) Chrome/90.0 Mobile Safari/537.36"
+                "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 " +
+                    "(KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3"
             )
+            .header("X-User-Agent", "Model: MAG250; Link: Ethernet")
             .header("Referer", "$baseUrl/")
             .header("X-Requested-With", "XMLHttpRequest")
             .build()
@@ -278,6 +297,11 @@ class StalkerApi(portalUrl: String, private val mac: String) {
 
     private class MemoryCookieJar : CookieJar {
         private val store = mutableListOf<Cookie>()
+
+        /** Pre-loads cookies (e.g. the STB fingerprint cookies) before any request. */
+        fun seed(url: HttpUrl, cookies: List<Cookie>) {
+            saveFromResponse(url, cookies)
+        }
 
         override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
             for (cookie in cookies) {
