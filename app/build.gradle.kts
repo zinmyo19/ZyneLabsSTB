@@ -16,12 +16,27 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Fixed shared debug keystore so every CI build keeps one signature —
+            // users can update without uninstalling. (Public repo; password
+            // committed deliberately, same practice as AOSP debug keys.)
+            signingConfig = signingConfigs.getByName("fixed")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+    }
+
+    signingConfigs {
+        create("fixed") {
+            storeFile = file("../keystore/zynelabs-debug.keystore")
+            storePassword = "zynelabs"
+            keyAlias = "zynelabs"
+            keyPassword = "zynelabs"
         }
     }
 
