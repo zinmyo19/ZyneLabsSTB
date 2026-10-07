@@ -476,6 +476,63 @@ class StalkerApi(
     }
 
     /**
+     * v2.8: Paginated channel loading via itv/get_ordered_list (OTT-style).
+     * get_all_channels returns a single ~25MB JSON (20k+ channels) —
+     * unreliable over mobile networks; the portal may truncate or kill huge
+     * responses, surfacing as "Empty response from portal (HTTP 200)".
+     * This fetches small pages (~16KB, 14 items) instead, each through
+     * [withSession] (Bearer header + self-healing + handshake lock).
+     *
+     * @param genreId TV genre ID to filter by (sent as genre param; also
+     *   applied client-side as a safety net), or null for all channels.
+     * @param maxPages safety cap on pages to fetch (14 items/page).
+     * @return accumulated channels, sorted by channel number.
+     */
+    suspend fun getChannelsPaginated(
+        genreId: String? = null,
+        maxPages: Int = 20
+    ): List<Channel> {
+        val all = ArrayList<Channel>()
+        var page = 1
+        var lastPage = false
+        while (page <= maxPages && !lastPage) {
+            val extra = mutableMapOf("p" to page.toString())
+            if (!genreId.isNullOrBlank()) extra["genre"] = genreId
+            val (channels, isLast) = withSession {
+                val js = jsPayload(get("itv", "get_ordered_list", extra))
+                val data = js.optJSONArray("data")
+                if (data == null || data.length() == 0) {
+                    return@withSession Pair(emptyList<Channel>(), true)
+                }
+                val maxItems = js.optInt("max_page_items", 14)
+                val list = ArrayList<Channel>(data.length())
+                for (i in 0 until data.length()) {
+                    val o = data.getJSONObject(i)
+                    val chGenreId = o.optString("tv_genre_id")
+                    // Client-side filter: the portal may ignore the genre
+                    // param and return unfiltered pages.
+                    if (!genreId.isNullOrBlank() && chGenreId != genreId) continue
+                    list.add(
+                        Channel(
+                            id = o.optString("id"),
+                            number = o.optString("number"),
+                            name = o.optString("name"),
+                            cmd = o.optString("cmd"),
+                            logo = o.optString("logo"),
+                            genreId = chGenreId
+                        )
+                    )
+                }
+                Pair(list as List<Channel>, data.length() < maxItems)
+            }
+            all.addAll(channels)
+            lastPage = isLast
+            page++
+        }
+        return all.sortedBy { it.number.toIntOrNull() ?: Int.MAX_VALUE }
+    }
+
+    /**
      * Resolves a channel [cmd] into a playable stream URL.
      * Strips the "ffmpeg "/"ffprobe " transport prefix when present.
      *
