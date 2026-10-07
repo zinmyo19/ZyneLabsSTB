@@ -347,17 +347,33 @@ class StalkerApi(
      * (or blank). Callers capture the token that just failed; if another
      * thread refreshed it while we waited for [handshakeMutex], we skip the
      * handshake and retry with the fresh token instead of invalidating it.
+     *
+     * v3.0: pass [force]=true to handshake unconditionally. The portal
+     * allows one session per MAC, so a token that looks current locally may
+     * already be dead server-side (e.g. the on-device Probe handshook in
+     * another flow) — skipping the handshake would retry with a dead token.
+     *
      * @return true if a handshake was performed.
      */
-    private suspend fun handshakeIfStale(staleToken: String?): Boolean {
+    private suspend fun handshakeIfStale(
+        staleToken: String?,
+        force: Boolean = false
+    ): Boolean {
         return handshakeMutex.withLock {
-            if (token == staleToken || token.isNullOrBlank()) {
+            if (force || token == staleToken || token.isNullOrBlank()) {
                 handshake()
                 true
             } else {
                 false
             }
         }
+    }
+
+    /** v3.0: exponential backoff between self-heal retries (1s, 2s, 4s). */
+    private fun backoffMs(attempt: Int): Long = when (attempt) {
+        1 -> 1000L
+        2 -> 2000L
+        else -> 4000L
     }
 
     /**
@@ -368,11 +384,21 @@ class StalkerApi(
      * elsewhere, or OTT reconnecting, kills our token) and answers with
      * HTTP 200 + empty body instead of 401. When an auth failure is
      * detected — empty body, portal error, or a profile with id:null — we
-     * do ONE fresh handshake ([buildHeaders] picks up the new token for the
-     * retry) and retry the call once. If the retry also fails, the ORIGINAL
-     * error is thrown. Network-level (IOException) recovery is unchanged:
-     * evict the pool, wait a beat, retry with the existing token first,
-     * re-handshake only as a last resort.
+     * re-handshake ([buildHeaders] picks up the new token for the retry)
+     * and retry the call.
+     *
+     * v3.0 aggressive self-healing: auth failures are retried up to 3 times
+     * with exponential backoff (1s/2s/4s), and every retry FORCES a fresh
+     * handshake — a token that looks current locally may already be dead
+     * server-side (the on-device Probe handshook in another flow, killing
+     * the app's token under the portal's one-session-per-MAC rule). The
+     * v2.7 handshake mutex keeps concurrent handshakes serialized. Retries
+     * are logged to logcat. If the call still fails with an auth failure
+     * after fresh handshakes, the MAC is reported as not registered.
+     *
+     * Network-level (IOException) recovery: evict the pool, back off, retry
+     * with the existing token; a subsequent auth failure on retry flows
+     * into the forced-handshake path above.
      */
     private suspend fun <T> withSession(block: suspend () -> T): T {
         if (token.isNullOrBlank()) {
@@ -382,48 +408,50 @@ class StalkerApi(
                 if (token.isNullOrBlank()) handshake()
             }
         }
-        // Token the upcoming call(s) will use; captured so the recovery
-        // below can tell whether another thread refreshed it meanwhile.
-        val attemptToken = token
-        try {
-            return block()
-        } catch (e: IOException) {
-            // Transient network failure: retry on a fresh connection with the
-            // existing token first. Re-handshake only as a last resort, since
-            // the portal invalidates the previous token on each handshake.
-            client.connectionPool.evictAll()
-            delay(1000)
+        // v3.0: up to 3 self-heal retries (not just 1).
+        val maxRetries = 3
+        var attempt = 0
+        var firstWasAuthFailure = false
+        while (true) {
             try {
                 return block()
-            } catch (e2: StalkerException) {
-                if (isAuthFailure(e2)) {
-                    // v2.7: serialized; skips when another thread refreshed.
-                    handshakeIfStale(attemptToken)
-                    try {
-                        return block()
-                    } catch (retryEx: Exception) {
-                        throw e2 // original auth error, not the retry's
+            } catch (e: IOException) {
+                // Transient network failure: retry on a fresh connection with
+                // the existing token. Re-handshakes happen only if the retry
+                // then reports an auth failure (see below).
+                attempt++
+                if (attempt > maxRetries) throw e
+                android.util.Log.w(
+                    "StalkerApi",
+                    "withSession: network error (attempt $attempt/$maxRetries), " +
+                        "backing off: ${(e.message ?: e.javaClass.simpleName).take(60)}"
+                )
+                client.connectionPool.evictAll()
+                delay(backoffMs(attempt))
+            } catch (e: StalkerException) {
+                if (!isAuthFailure(e)) throw e
+                if (attempt == 0) firstWasAuthFailure = true
+                attempt++
+                if (attempt > maxRetries) {
+                    // Fresh handshakes didn't help: the token isn't the
+                    // problem — the MAC itself isn't registered. (Preserves
+                    // the v2.5/v2.7 "MAC not registered" detection.)
+                    if (firstWasAuthFailure) {
+                        throw StalkerException("MAC not registered on this portal")
                     }
+                    throw e
                 }
-                throw e2
-            }
-        } catch (e: StalkerException) {
-            if (!isAuthFailure(e)) throw e
-            val originalError = e
-            // v2.7: serialized re-handshake — if a sibling thread already
-            // refreshed the token, reuse it instead of invalidating it.
-            // (buildHeaders() picks up the current token for the retry.)
-            handshakeIfStale(attemptToken)
-            try {
-                return block()
-            } catch (retryEx: Exception) {
-                // Still failing after a FRESH handshake: if the profile
-                // STILL has id:null, the MAC itself isn't registered
-                // (not a dead token) — say so plainly.
-                if ((retryEx as? StalkerException)?.isAuthFailure == true && originalError.isAuthFailure) {
-                    throw StalkerException("MAC not registered on this portal")
-                }
-                throw originalError
+                android.util.Log.w(
+                    "StalkerApi",
+                    "withSession: auth failure (attempt $attempt/$maxRetries), " +
+                        "forcing fresh handshake: ${(e.message ?: "?").take(60)}"
+                )
+                // v3.0: FORCE — the stored token may be dead server-side
+                // even though it looks current locally (probe/app session
+                // conflict). The mutex keeps concurrent handshakes
+                // serialized (v2.7).
+                handshakeIfStale(null, force = true)
+                delay(backoffMs(attempt))
             }
         }
     }
