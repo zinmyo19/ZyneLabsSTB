@@ -89,11 +89,12 @@ class GuideActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val api = StalkerSession.get(this@GuideActivity)
-                var list = api.getAllChannels()
                 val genreId = intent.getStringExtra(EXTRA_GENRE_ID)
-                if (!genreId.isNullOrEmpty()) {
-                    list = list.filter { it.genreId == genreId }
-                }
+                // v2.8: paginated (see ChannelListActivity) — MAX_ROWS caps
+                // the guide rows after fetching.
+                val list = api.getChannelsPaginated(
+                    genreId = genreId?.ifBlank { null }
+                )
                 channels = list.take(MAX_ROWS)
                 adapter.submitList(channels.map { GuideRow(it, selectedDate) }) {
                     if (channels.isNotEmpty()) binding.recyclerView.requestFocus()
