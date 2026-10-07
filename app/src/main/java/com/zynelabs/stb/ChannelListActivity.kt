@@ -77,11 +77,13 @@ class ChannelListActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val api = StalkerSession.get(this@ChannelListActivity)
-                var channels = api.getAllChannels()
                 val genreId = intent.getStringExtra(EXTRA_GENRE_ID)
-                if (!genreId.isNullOrEmpty()) {
-                    channels = channels.filter { it.genreId == genreId }
-                }
+                // v2.8: paginated loading (get_ordered_list, 14/page) instead
+                // of the unreliable 25MB get_all_channels single response.
+                // Genre filtering happens server-side + client-side in the API.
+                val channels = api.getChannelsPaginated(
+                    genreId = genreId?.ifBlank { null }
+                )
                 adapter.submitList(channels) {
                     if (channels.isNotEmpty()) {
                         binding.recyclerView.requestFocus()
