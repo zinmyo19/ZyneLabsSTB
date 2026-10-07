@@ -1,7 +1,11 @@
 package com.zynelabs.stb
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -24,6 +28,7 @@ class SettingsActivity : AppCompatActivity() {
         private const val ID_AUDIO = "audio"
         private const val ID_PORTAL = "portal"
         private const val ID_PROBE = "probe"
+        private const val ID_DEBUG = "debug"
         private const val ID_VERSION = "version"
     }
 
@@ -80,6 +85,11 @@ class SettingsActivity : AppCompatActivity() {
                 ""
             ),
             RowItem(
+                ID_DEBUG,
+                getString(R.string.debug_row),
+                ""
+            ),
+            RowItem(
                 ID_VERSION,
                 getString(R.string.setting_version),
                 BuildConfig.VERSION_NAME
@@ -104,6 +114,14 @@ class SettingsActivity : AppCompatActivity() {
             }
             ID_PROBE -> {
                 startActivity(Intent(this, ProbeActivity::class.java))
+                return
+            }
+            ID_DEBUG -> {
+                // v3.4: copy last handshake/profile diagnostics to clipboard
+                val info = StalkerSession.get(this).buildDebugInfo()
+                val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                cm.setPrimaryClip(ClipData.newPlainText("ZyneLabs STB debug", info))
+                Toast.makeText(this, "Debug info copied", Toast.LENGTH_SHORT).show()
                 return
             }
             else -> return
