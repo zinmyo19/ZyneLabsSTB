@@ -56,10 +56,7 @@ class PlayerActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                val api = StalkerApi(
-                    Prefs.getPortalUrl(this@PlayerActivity),
-                    Prefs.getMac(this@PlayerActivity)
-                )
+                val api = StalkerSession.get(this@PlayerActivity)
                 val type = intent.getStringExtra(EXTRA_CMD_TYPE) ?: TYPE_ITV
                 val streamUrl = api.createLink(cmd, type)
                 initPlayer(streamUrl)
