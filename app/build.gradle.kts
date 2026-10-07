@@ -15,6 +15,15 @@ android {
         versionName = "1.3"
     }
 
+    signingConfigs {
+        create("fixed") {
+            storeFile = file("../keystore/zynelabs-debug.keystore")
+            storePassword = "zynelabs"
+            keyAlias = "zynelabs"
+            keyPassword = "zynelabs"
+        }
+    }
+
     buildTypes {
         debug {
             // Fixed shared debug keystore so every CI build keeps one signature —
@@ -28,15 +37,6 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-        }
-    }
-
-    signingConfigs {
-        create("fixed") {
-            storeFile = file("../keystore/zynelabs-debug.keystore")
-            storePassword = "zynelabs"
-            keyAlias = "zynelabs"
-            keyPassword = "zynelabs"
         }
     }
 
