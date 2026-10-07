@@ -23,6 +23,7 @@ class SettingsActivity : AppCompatActivity() {
         private const val ID_SUBTITLES = "subtitles"
         private const val ID_AUDIO = "audio"
         private const val ID_PORTAL = "portal"
+        private const val ID_PROBE = "probe"
         private const val ID_VERSION = "version"
     }
 
@@ -74,6 +75,11 @@ class SettingsActivity : AppCompatActivity() {
                 Prefs.getMac(this)
             ),
             RowItem(
+                ID_PROBE,
+                getString(R.string.probe_row),
+                ""
+            ),
+            RowItem(
                 ID_VERSION,
                 getString(R.string.setting_version),
                 BuildConfig.VERSION_NAME
@@ -94,6 +100,10 @@ class SettingsActivity : AppCompatActivity() {
                     Intent(this, MainActivity::class.java)
                         .putExtra(MainActivity.EXTRA_SETUP, true)
                 )
+                return
+            }
+            ID_PROBE -> {
+                startActivity(Intent(this, ProbeActivity::class.java))
                 return
             }
             else -> return
