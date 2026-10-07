@@ -26,6 +26,12 @@ import kotlinx.coroutines.delay
  *
  * The token is obtained via [handshake] and refreshed automatically when the
  * portal reports an invalid/expired token.
+ *
+ * v2.4 protocol shape (stock Ministra, Wireshark-verified):
+ * - handshake: GET portal.php?type=stb&action=handshake&JsHttpRequest=1-xml
+ *   (MAC travels in the mac cookie only, no token param)
+ * - every later call: same URL shape + `Authorization: Bearer <token>` header.
+ *   Never a token= or mac= query param — those break session association.
  */
 class StalkerApi(
     portalUrl: String,
@@ -83,16 +89,22 @@ class StalkerApi(
     // ------------------------------------------------------------------ HTTP
 
     /** The MAG-box fingerprint headers sent with every portal request. */
-    private fun buildHeaders(): okhttp3.Headers = okhttp3.Headers.Builder()
-        .add(
-            "User-Agent",
-            "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 " +
-                "(KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3"
-        )
-        .add("X-User-Agent", "Model: MAG250; Link: Ethernet")
-        .add("Referer", "$baseUrl/")
-        .add("X-Requested-With", "XMLHttpRequest")
-        .build()
+    private fun buildHeaders(): okhttp3.Headers {
+        val b = okhttp3.Headers.Builder()
+            .add(
+                "User-Agent",
+                "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 " +
+                    "(KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3"
+            )
+            .add("X-User-Agent", "Model: MAG250; Link: Ethernet")
+            .add("Referer", "$baseUrl/")
+            .add("X-Requested-With", "XMLHttpRequest")
+        // v2.4: the session token travels as an Authorization: Bearer header
+        // (stock Ministra behavior, Wireshark-verified) — never as a token=
+        // query param. The MAC travels in the mac cookie only.
+        token?.takeIf { it.isNotBlank() }?.let { b.add("Authorization", "Bearer $it") }
+        return b.build()
+    }
 
     private fun buildUrl(
         type: String,
@@ -104,12 +116,11 @@ class StalkerApi(
         builder.addQueryParameter("type", type)
         builder.addQueryParameter("action", action)
         builder.addQueryParameter("JsHttpRequest", "1-xml")
-        // v2.2: send token/mac unencoded (literal colons). Some panels do naive
-        // query parsing without URL-decoding, so %3A MACs never match their DB.
-        token?.let { builder.addEncodedQueryParameter("token", it) }
-        builder.addEncodedQueryParameter("mac", mac)
-        // v2.3: NO device IDs (sn/device_id/device_id2/signature) — the panel
-        // may validate MAC+device IDs as a pair; our random IDs broke the match.
+        // v2.4: NO token=/mac= query params. Token goes in the Authorization:
+        // Bearer header (see buildHeaders()); MAC goes in the mac cookie.
+        // Stock Ministra behavior — sending them as query params makes the
+        // portal unable to associate requests with the session (id:null).
+        // v2.3: no device IDs (sn/device_id/device_id2/signature).
         for ((key, value) in extra) {
             builder.addQueryParameter(key, value)
         }
@@ -175,9 +186,9 @@ class StalkerApi(
     )
 
     /**
-     * Raw probe: performs GET type/action with token+mac and the standard
-     * headers, returning the HTTP status, body length and a snippet of
-     * [snippetLen] chars (default 100).
+     * Raw probe: performs GET type/action with the standard headers
+     * (Authorization: Bearer token + mac cookie), returning the HTTP status,
+     * body length and a snippet of [snippetLen] chars (default 100).
      * Used by the on-device Portal API Probe to discover which actions a
      * portal actually implements. Never throws.
      */
@@ -194,8 +205,7 @@ class StalkerApi(
             url.addQueryParameter("type", type)
             url.addQueryParameter("action", action)
             url.addQueryParameter("JsHttpRequest", "1-xml")
-            token?.let { url.addEncodedQueryParameter("token", it) }
-            url.addEncodedQueryParameter("mac", mac)
+            // v2.4: no token=/mac= query params (Bearer header + mac cookie)
             // v2.3: no device IDs
             for ((k, v) in extra) {
                 url.addQueryParameter(k, v)
@@ -236,9 +246,9 @@ class StalkerApi(
         }
 
     /**
-     * POST variant of [probe]: sends type/action/JsHttpRequest/token/mac as
-     * a form body instead of query params. Some panels only accept POST for
-     * data actions. Never throws.
+     * POST variant of [probe]: sends type/action/JsHttpRequest as a form body
+     * instead of query params (token via Bearer header, MAC via cookie).
+     * Some panels only accept POST for data actions. Never throws.
      */
     suspend fun probePost(
         type: String,
@@ -251,8 +261,7 @@ class StalkerApi(
                 .add("type", type)
                 .add("action", action)
                 .add("JsHttpRequest", "1-xml")
-            token?.let { form.addEncoded("token", it) }
-            form.addEncoded("mac", mac)
+            // v2.4: no token/mac in body (Bearer header + mac cookie)
             // v2.3: no device IDs
             for ((k, v) in extra) form.add(k, v)
             val req = Request.Builder()
