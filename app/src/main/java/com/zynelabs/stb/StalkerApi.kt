@@ -95,10 +95,21 @@ import kotlinx.coroutines.delay
  * handshake → itv/get_ordered_list DIRECTLY (no get_profile call was ever
  * captured on bingeiptv.xyz or wafasiad.com). bingeiptv.xyz returns EMPTY
  * for get_profile even with the v4.0 MAG format, while get_ordered_list
- * works. The auth ladder ([tryAuthMethod]) and session validation
+ * works. The auth ladder ([tryAuthMethodWithToken]) and session validation
  * ([getProfile]) now probe itv/get_ordered_list page 1 for real channel
  * data instead of stb/get_profile for a profile id. "MAC not registered"
  * fires only when all four auth methods fail to return channel data.
+ *
+ * v4.2: single handshake. v4.1's ladder did a FRESH handshake per auth
+ * method — up to 7 handshakes per connect (1 initial + 3 forced retries +
+ * 3 ladder handshakes) — and bingeiptv.xyz answered every get_ordered_list
+ * with HTTP 200 + empty body, likely rate-limiting the rapid-fire
+ * handshakes from the same MAC. OTT Navigator does ONE handshake and
+ * reuses the token for everything. The ladder now does ONE handshake,
+ * tries all 4 auth methods with that SAME token ([tryAuthMethodWithToken]
+ * performs no handshake of its own), and only on total failure does ONE
+ * more fresh handshake + a second 4-method round. Max 2 handshakes per
+ * connect attempt. Copy Debug Info shows the handshake count.
  */
 class StalkerApi(
     portalUrl: String,
@@ -232,7 +243,7 @@ class StalkerApi(
      *
      * v4.1: captures the first itv/get_ordered_list instead — OTT's flow
      * skips stb/get_profile entirely, and our auth validation now uses
-     * the channel list (see [tryAuthMethod]/[getProfile]).
+     * the channel list (see [tryAuthMethodWithToken]/[getProfile]).
      */
     @Volatile var debugProfileUrl: String? = null
         private set
@@ -241,6 +252,15 @@ class StalkerApi(
     @Volatile var debugProfileHttpCode: Int? = null
         private set
     @Volatile var debugProfileBody: String? = null
+        private set
+
+    /**
+     * v4.2: counts handshake() calls on this instance (successful or not).
+     * Shown in Copy Debug Info — the v4.1 ladder did up to 7 handshakes per
+     * connect, which likely triggered portal rate-limiting; v4.2 caps it
+     * at 2 per connect attempt (see [withSession]).
+     */
+    @Volatile var debugHandshakeCount: Int = 0
         private set
 
     /** v3.4: one-line redacted header dump for Copy Debug Info. */
@@ -272,6 +292,7 @@ class StalkerApi(
         sb.appendLine("API base: $apiBase")
         sb.appendLine("MAC: $mac")
         sb.appendLine("Auth method: $authMethod")
+        sb.appendLine("Handshakes: $debugHandshakeCount")
         sb.appendLine()
         sb.appendLine("Handshake URL:")
         sb.appendLine(debugHandshakeUrl ?: "(none yet)")
@@ -453,7 +474,7 @@ class StalkerApi(
             val body = response.body?.string().orEmpty()
             // v4.1: capture the first itv/get_ordered_list AFTER each
             // handshake() (the session-validation call — see [getProfile]
-            // and [tryAuthMethod]). OTT's packet-captured flow skips
+            // and [tryAuthMethodWithToken]). OTT's packet-captured flow skips
             // stb/get_profile entirely, so get_profile diagnostics are
             // no longer useful. handshake() resets these fields, so Copy
             // Debug Info always shows the CURRENT session's attempt.
@@ -633,6 +654,8 @@ class StalkerApi(
      */
     suspend fun handshake(): String {
         token = null
+        // v4.2: count every handshake attempt (see debugHandshakeCount).
+        debugHandshakeCount++
         // v4.1: reset the per-session validation capture (first
         // itv/get_ordered_list — see [get]). The StalkerSession singleton
         // reuses this instance across connects, and the auth ladder
@@ -764,48 +787,40 @@ class StalkerApi(
     }
 
     /**
-     * v3.1: tries the token-as-query-param auth method. Some panels (older
-     * variants, e.g. ultvtivon.site) expect `token=<token>` in the query
-     * string instead of the v2.4 `Authorization: Bearer` header — with the
-     * header they return id:null, which used to be misread as "MAC not
-     * registered" (false positive: OTT works with the same MAC).
-     *
-     * v3.2: generalized to try any [AuthMethod]. Switches [authMethod],
-     * does a clean handshake (no token on the handshake request itself —
-     * syncTokenCookie() drops the stale cookie first), then probes
-     * stb/get_profile with the new method.
-     *
-     * v4.1: validation now uses itv/get_ordered_list page 1 instead of
-     * stb/get_profile. Dominic's packet capture proved OTT Navigator NEVER
-     * calls stb/get_profile — its flow is handshake → get_ordered_list
-     * directly. bingeiptv.xyz returns EMPTY for get_profile even with the
-     * v4.0 MAG format, while get_ordered_list works. Real channel data
-     * ({"js":{"data":[... with >= 1 item) is the proof the session works.
+     * v4.2: tries one [AuthMethod] using the CURRENT token — performs NO
+     * handshake of its own. v4.1 did a fresh handshake per method (up to 7
+     * handshakes per connect), which likely triggered portal
+     * rate-limiting; OTT does one handshake and reuses the token. The
+     * caller ([withSession] ladder) performs the handshake(s); this just
+     * switches the wire format (Bearer header via [buildHeaders],
+     * token= query param via [buildUrl], token= cookie via
+     * [syncTokenCookie], or nothing for MAC_ONLY) and probes
+     * itv/get_ordered_list page 1 for real channel data.
      *
      * @return true when the probe yields channel data — the caller keeps
-     *         the method; false leaves [authMethod] for the caller to
-     *         restore.
+     *         the method; false leaves [authMethod] for the caller.
      */
-    private suspend fun tryAuthMethod(method: AuthMethod): Boolean {
+    private suspend fun tryAuthMethodWithToken(method: AuthMethod): Boolean {
         return try {
             authMethod = method
-            handshakeMutex.withLock {
-                token = null // clean handshake — no stale token on the wire
-                handshake() // syncTokenCookie() runs inside handshake()
-            }
+            // Publish/remove the token cookie for this wire format. The
+            // token itself is unchanged — it came from the ladder's single
+            // handshake, not a fresh one.
+            syncTokenCookie()
             val js = jsPayload(get("itv", "get_ordered_list", mapOf("p" to "1")))
             val data = js.optJSONArray("data")
             val ok = data != null && data.length() > 0
             android.util.Log.i(
                 "StalkerApi",
-                "tryAuthMethod($method): channel data valid = $ok " +
-                    "(items=${data?.length() ?: 0})"
+                "tryAuthMethodWithToken($method): channel data valid = $ok " +
+                    "(items=${data?.length() ?: 0}, same token)"
             )
             ok
         } catch (e: Exception) {
             android.util.Log.w(
                 "StalkerApi",
-                "tryAuthMethod($method) failed: ${(e.message ?: e.javaClass.simpleName).take(60)}"
+                "tryAuthMethodWithToken($method) failed: " +
+                    "${(e.message ?: e.javaClass.simpleName).take(60)}"
             )
             false
         }
@@ -831,12 +846,18 @@ class StalkerApi(
      * are logged to logcat. If the call still fails with an auth failure
      * after fresh handshakes, the MAC is reported as not registered.
      *
-     * v3.2: auth-method ladder. If fresh handshakes with the current method
-     * keep failing, the app walks BEARER → TOKEN_PARAM → TOKEN_COOKIE →
-     * MAC_ONLY (see [tryAuthMethod]), keeping the first method that yields
+     * v3.2: auth-method ladder. If the current method keeps failing, the
+     * app walks BEARER → TOKEN_PARAM → TOKEN_COOKIE → MAC_ONLY (see
+     * [tryAuthMethodWithToken]), keeping the first method that yields
      * valid channel data (v4.1: itv/get_ordered_list page 1 — OTT's flow
      * skips stb/get_profile entirely). Only when ALL four methods fail is
      * the MAC reported as not registered.
+     *
+     * v4.2: single handshake. v4.1 did a fresh handshake per ladder method
+     * (up to 7 handshakes per connect); rapid-fire handshakes likely
+     * trigger portal rate-limiting. The ladder now tries all 4 methods
+     * with ONE token (round 1: remaining methods, same token; round 2:
+     * one fresh handshake, all 4 methods). Max 2 handshakes per connect.
      *
      * Network-level (IOException) recovery: evict the pool, back off, retry
      * with the existing token; a subsequent auth failure on retry flows
@@ -850,13 +871,10 @@ class StalkerApi(
                 if (token.isNullOrBlank()) handshake()
             }
         }
-        // v3.0: up to 3 self-heal retries (not just 1).
+        // v3.0: up to 3 self-heal retries (not just 1) for network errors.
         val maxRetries = 3
         var attempt = 0
         var firstWasAuthFailure = false
-        // v3.2: index into the auth-method ladder. We start with the
-        // cached/current method and walk forward on exhaustion.
-        var methodIndex = AuthMethod.values().indexOf(authMethod).coerceAtLeast(0)
         while (true) {
             try {
                 return block()
@@ -876,73 +894,77 @@ class StalkerApi(
             } catch (e: StalkerException) {
                 if (!isAuthFailure(e)) throw e
                 if (attempt == 0) firstWasAuthFailure = true
-                attempt++
-                if (attempt > maxRetries) {
-                    // v3.2: walk the auth-method ladder. The current method's
-                    // fresh handshakes didn't help — try the next wire
-                    // format (Bearer → token= param → token cookie →
-                    // MAC-only) before concluding the MAC is unregistered.
-                    // Each tryAuthMethod does its own clean handshake +
-                    // channel-list probe (v4.1: itv/get_ordered_list page 1
-                    // — OTT's flow skips stb/get_profile entirely); we keep
-                    // the first method that yields real channel data.
-                    // v3.7: ladder order verified — AuthMethod enum ordinal
-                    // is BEARER(0) → TOKEN_PARAM(1) → TOKEN_COOKIE(2) →
-                    // MAC_ONLY(3), and methodIndex starts at the current
-                    // method (BEARER on a fresh instance), so the Bearer
-                    // header is always tried FIRST. The v3.6 "first
-                    // attempt showed token=" confusion was the stale
-                    // per-instance capture (fixed: handshake() now resets
-                    // the capture), not a ladder-order bug.
-                    val methods = AuthMethod.values()
+                // v4.2: single-handshake ladder. OTT does ONE handshake and
+                // reuses the token for everything; v4.1's rapid-fire
+                // handshakes (up to 7 per connect) likely triggered portal
+                // rate-limiting (HTTP 200 + empty body for every call).
+                // Round 1: try the remaining auth methods with the CURRENT
+                // token — no new handshake. Round 2: ONE fresh handshake,
+                // then all 4 methods with the new token. Max 2 handshakes
+                // per connect attempt.
+                val methods = AuthMethod.values()
+                var methodIndex = methods.indexOf(authMethod).coerceAtLeast(0)
+                android.util.Log.w(
+                    "StalkerApi",
+                    "withSession: auth failure, ladder round 1 (same token) " +
+                        "from ${methods[methodIndex]}, " +
+                        "order=${methods.joinToString("→")}"
+                )
+                var foundWorking = false
+                while (methodIndex < methods.size - 1 && !foundWorking) {
+                    methodIndex++
+                    val next = methods[methodIndex]
                     android.util.Log.w(
                         "StalkerApi",
-                        "withSession: ladder starting from ${methods[methodIndex]}, " +
-                            "order=${methods.joinToString("→")}"
+                        "withSession: trying $next with current token " +
+                            "(no new handshake)"
                     )
-                    var foundWorking = false
+                    if (tryAuthMethodWithToken(next)) {
+                        authMethod = next
+                        foundWorking = true
+                    }
+                }
+                if (!foundWorking) {
+                    // Round 2: one fresh handshake (the first token may
+                    // have been stale), then all 4 methods with it.
+                    android.util.Log.w(
+                        "StalkerApi",
+                        "withSession: round 1 failed, one fresh handshake " +
+                            "then ladder round 2 (all 4 methods)"
+                    )
+                    // v3.0: FORCE — the stored token may be dead
+                    // server-side even though it looks current locally
+                    // (probe/app session conflict). The mutex keeps
+                    // concurrent handshakes serialized (v2.7).
+                    handshakeIfStale(null, force = true)
+                    methodIndex = -1
                     while (methodIndex < methods.size - 1 && !foundWorking) {
                         methodIndex++
                         val next = methods[methodIndex]
                         android.util.Log.w(
                             "StalkerApi",
-                            "withSession: ${methods[methodIndex - 1]} exhausted, " +
-                                "trying $next"
+                            "withSession: round 2 trying $next"
                         )
-                        if (tryAuthMethod(next)) {
+                        if (tryAuthMethodWithToken(next)) {
                             authMethod = next
                             foundWorking = true
                         }
                     }
-                    if (foundWorking) {
-                        // New method works — retry the call with it.
-                        attempt = 0
-                        firstWasAuthFailure = false
-                        // Restart the ladder from the working method for
-                        // any future exhaustion in this session.
-                        methodIndex = AuthMethod.values().indexOf(authMethod)
-                        continue
-                    }
-                    // ALL auth methods failed after fresh handshakes: the
-                    // token isn't the problem — the MAC itself isn't
-                    // registered. (Preserves the v2.5/v2.7 "MAC not
-                    // registered" detection, now a true last resort.)
-                    if (firstWasAuthFailure) {
-                        throw StalkerException("MAC not registered on this portal")
-                    }
-                    throw e
                 }
-                android.util.Log.w(
-                    "StalkerApi",
-                    "withSession: auth failure (attempt $attempt/$maxRetries), " +
-                        "forcing fresh handshake: ${(e.message ?: "?").take(60)}"
-                )
-                // v3.0: FORCE — the stored token may be dead server-side
-                // even though it looks current locally (probe/app session
-                // conflict). The mutex keeps concurrent handshakes
-                // serialized (v2.7).
-                handshakeIfStale(null, force = true)
-                delay(backoffMs(attempt))
+                if (foundWorking) {
+                    // New method works — retry the call with it.
+                    attempt = 0
+                    firstWasAuthFailure = false
+                    continue
+                }
+                // Both rounds failed (max 2 handshakes): the token isn't
+                // the problem — the MAC itself isn't registered.
+                // (Preserves the v2.5/v2.7 "MAC not registered" detection,
+                // now a true last resort.)
+                if (firstWasAuthFailure) {
+                    throw StalkerException("MAC not registered on this portal")
+                }
+                throw e
             }
         }
     }
