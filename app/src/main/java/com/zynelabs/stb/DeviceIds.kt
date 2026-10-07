@@ -52,7 +52,7 @@ data class DeviceIds(
                     id2.isNullOrBlank() || sig.isNullOrBlank()
                 ) {
                     val rnd = SecureRandom()
-                    sn = (1..13).map { ('0'..'9').random(rnd) }.joinToString("")
+                    sn = (1..13).map { '0' + rnd.nextInt(10) }.joinToString("")
                     id1 = (1..64).map { HEX[rnd.nextInt(16)] }.joinToString("")
                     id2 = (1..64).map { HEX[rnd.nextInt(16)] }.joinToString("")
                     sig = (1..64).map { HEX[rnd.nextInt(16)] }.joinToString("")
