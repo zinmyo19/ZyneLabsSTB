@@ -8,6 +8,7 @@
     <string name="mac_label">Box MAC Address</string>
     <string name="mac_hint">00:1A:79:XX:XX:XX</string>
     <string name="connect">Connect</string>
+    <string name="settings_button">⚙ Settings</string>
 
     <string name="status_connecting">Connecting to portal…</string>
 
