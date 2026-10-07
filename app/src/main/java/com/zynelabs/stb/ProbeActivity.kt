@@ -152,6 +152,18 @@ class ProbeActivity : AppCompatActivity() {
                             (e.message ?: e.javaClass.simpleName).toString().take(80)
                     )
                 }
+                // v2.6: create_link on the first channel — reveals the stream
+                // URL format (http/https vs udp/rtmp) to diagnose black screen.
+                appendLine("itv/create_link (first channel) ...")
+                try {
+                    val summary = api.probeCreateLink()
+                    appendLine("itv/create_link -> OK $summary".take(400))
+                } catch (e: Exception) {
+                    appendLine(
+                        "itv/create_link -> ERROR " +
+                            (e.message ?: e.javaClass.simpleName).toString().take(200)
+                    )
+                }
                 appendLine("Done.")
             } finally {
                 withContext(Dispatchers.Main) {
