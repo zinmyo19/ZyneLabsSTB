@@ -60,13 +60,13 @@ class GroupsActivity : AppCompatActivity() {
                     if (rows.isNotEmpty()) binding.recyclerView.requestFocus()
                 }
             } catch (e: Exception) {
-                // Genre fetch failed: still offer the unfiltered channel list.
+                // Genre fetch failed (some portals don't implement get_genres):
+                // genres are optional, so stay silent and just offer the
+                // unfiltered channel list. No error text — the "All Channels"
+                // row is always present and is the real functionality.
                 adapter.submitList(
                     listOf(RowItem(ALL_ID, getString(R.string.all_channels)))
                 )
-                binding.tvError.text =
-                    getString(R.string.error_load_failed, e.message.orEmpty())
-                binding.tvError.isVisible = true
             } finally {
                 binding.progressBar.isVisible = false
             }
