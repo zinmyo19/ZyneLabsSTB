@@ -76,6 +76,20 @@ import kotlinx.coroutines.delay
  * 404'd). handshake() tries {host}/server/load.php first, then
  * {portal}/load.php, then {portal}/portal.php, keeping the working
  * endpoint in apiBase for all subsequent calls.
+ *
+ * v4.0: packet-capture-verified MAG format. Dominic's HTTP Sniffer
+ * capture of OTT Navigator's actual request headers PROVED it sends a
+ * full MAG200 fingerprint (NOT an OTT UA):
+ *   User-Agent: Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3
+ *     (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3
+ *   X-User-Agent: Model: MAG250; Link: WiFi
+ *   Referer: http://mag.tiger-ott.net:80/c/
+ *   Cookie: mac=...; stb_lang=en; timezone=GMT
+ *   Authorization: Bearer <token>
+ * v3.3–v3.5's "clean native app" changes were all WRONG (OTT UA, removed
+ * X-User-Agent, removed stb_lang/timezone, removed Referer). Reverted to
+ * the exact wire format OTT uses. Kept: /server/load.php (v3.9), Bearer
+ * auth (v2.4), JsHttpRequest=1-xml (v3.8) — all capture-confirmed.
  */
 class StalkerApi(
     portalUrl: String,
@@ -284,16 +298,20 @@ class StalkerApi(
         .build()
 
     init {
-        // v3.4: send ONLY the mac cookie. Previous versions seeded
-        // stb_lang/timezone cookies and an stb_type=MAG250 handshake param —
-        // mixed MAG/OTT signals that panels may flag as spoofing (UA says
-        // "OTT Navigator", a phone app). Clean OTT-like requests now.
+        // v4.0: packet-capture-verified MAG format. Dominic's HTTP Sniffer
+        // capture of OTT Navigator PROVED it sends:
+        //   Cookie: mac=...; stb_lang=en; timezone=GMT
+        // (v3.4's removal of stb_lang/timezone was WRONG — OTT sends them.)
         val portalHttp = ("$baseUrl/").toHttpUrlOrNull()
         if (portalHttp != null) {
             cookieJar.seed(
                 portalHttp,
                 listOf(
                     Cookie.Builder().name("mac").value(mac)
+                        .domain(portalHttp.host).path("/").build(),
+                    Cookie.Builder().name("stb_lang").value("en")
+                        .domain(portalHttp.host).path("/").build(),
+                    Cookie.Builder().name("timezone").value("GMT")
                         .domain(portalHttp.host).path("/").build()
                 )
             )
@@ -303,19 +321,33 @@ class StalkerApi(
     // ------------------------------------------------------------------ HTTP
 
     /** The client fingerprint headers sent with every portal request.
-     * v3.3: identifies as OTT Navigator (per user approval) instead of a
-     * MAG box — the portal was likely filtering our MAG200 UA after the
-     * day's heavy probing, while OTT's UA works from the same IP.
-     * v3.5: clean native-app headers ONLY — the v3.4 debug dump proved
-     * the handshake succeeds but get_profile rejects clients that mix a
-     * native-app UA with browser/web-UI artifacts (X-Requested-With and
-     * Referer are never sent by native apps). */
+     * v4.0: packet-capture-verified MAG format. Dominic's HTTP Sniffer
+     * capture of OTT Navigator PROVED it sends a full MAG200 fingerprint:
+     *   User-Agent: Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3
+     *     (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3
+     *   X-User-Agent: Model: MAG250; Link: WiFi
+     *   Referer: http://mag.tiger-ott.net:80/c/
+     *   Cookie: mac=...; stb_lang=en; timezone=GMT
+     *   Authorization: Bearer <token>
+     * v3.3–v3.5's "clean native app" changes were WRONG — OTT Navigator
+     * PRETENDS TO BE A MAG BOX for API calls; it never uses an OTT UA.
+     * Reverted: MAG200 UA (v1.3), X-User-Agent (v1.3), Referer (v3.5),
+     * stb_lang/timezone cookies (v3.4). Kept: Bearer auth (v2.4),
+     * /server/load.php API base (v3.9), JsHttpRequest=1-xml (v3.8) —
+     * all confirmed by the capture. */
     private fun buildHeaders(): okhttp3.Headers {
         val b = okhttp3.Headers.Builder()
             .add(
                 "User-Agent",
-                "OTT Navigator/1.6.9.9 (Linux;Android 13; en; 00000000)"
+                "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 " +
+                    "(KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3"
             )
+            // v4.0: restored (packet-capture verified — OTT sends this).
+            // v1.3 added it; v3.3 wrongly removed it.
+            .add("X-User-Agent", "Model: MAG250; Link: WiFi")
+            // v4.0: restored (packet-capture verified — OTT sends Referer:
+            // http://mag.tiger-ott.net:80/c/). v3.5 wrongly removed it.
+            .add("Referer", "$baseUrl/")
         // v2.4: the session token travels as an Authorization: Bearer header
         // (stock Ministra behavior, Wireshark-verified) — never as a token=
         // query param. The MAC travels in the mac cookie only.
