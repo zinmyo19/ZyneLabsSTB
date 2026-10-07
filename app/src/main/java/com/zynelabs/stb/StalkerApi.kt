@@ -117,6 +117,63 @@ class StalkerApi(
     private var authMethod: AuthMethod = AuthMethod.BEARER
 
     /**
+     * v3.4: on-device diagnostics for the Copy Debug Info button
+     * (Settings). Redacted token — safe to paste in chat.
+     */
+    @Volatile var debugHandshakeUrl: String? = null
+        private set
+    @Volatile var debugHandshakeHeaders: String? = null
+        private set
+    @Volatile var debugHandshakeResponse: String? = null
+        private set
+    @Volatile var debugProfileResponse: String? = null
+        private set
+
+    /** v3.4: one-line redacted header dump for Copy Debug Info. */
+    private fun debugHeaderDump(): String {
+        val sb = StringBuilder()
+        val h = buildHeaders()
+        for (i in 0 until h.size) {
+            val name = h.name(i)
+            var value = h.value(i)
+            if (name.equals("Authorization", ignoreCase = true)) {
+                value = "Bearer <redacted>"
+            }
+            if (sb.isNotEmpty()) sb.append("; ")
+            sb.append("$name: $value")
+        }
+        // cookies actually sent
+        val url = ("$baseUrl/").toHttpUrlOrNull()
+        if (url != null) {
+            val cookies = cookieJar.loadForRequest(url)
+                .joinToString("; ") { "${it.name}=${it.value.take(12)}${if (it.value.length > 12) "…" else ""}" }
+            if (cookies.isNotEmpty()) sb.append("; Cookie: $cookies")
+        }
+        return sb.toString()
+    }
+
+    /** v3.4: assembles the Copy Debug Info text (called from Settings). */
+    fun buildDebugInfo(): String {
+        val sb = StringBuilder()
+        sb.appendLine("Portal: $baseUrl")
+        sb.appendLine("MAC: $mac")
+        sb.appendLine("Auth method: $authMethod")
+        sb.appendLine()
+        sb.appendLine("Handshake URL:")
+        sb.appendLine(debugHandshakeUrl ?: "(none yet)")
+        sb.appendLine()
+        sb.appendLine("Handshake headers:")
+        sb.appendLine(debugHandshakeHeaders ?: "(none yet)")
+        sb.appendLine()
+        sb.appendLine("Handshake response (1000 chars):")
+        sb.appendLine(debugHandshakeResponse ?: "(none yet)")
+        sb.appendLine()
+        sb.appendLine("Last get_profile response (1000 chars):")
+        sb.appendLine(debugProfileResponse ?: "(none yet)")
+        return sb.toString()
+    }
+
+    /**
      * v2.7: serializes handshakes. The portal enforces one session per MAC —
      * every new handshake invalidates the previous token. Without this lock,
      * concurrent auth-failure recoveries (multiple activities/threads) each
@@ -137,17 +194,16 @@ class StalkerApi(
         .build()
 
     init {
-        // Pre-seed the STB cookies a real MAG box sends with every request.
+        // v3.4: send ONLY the mac cookie. Previous versions seeded
+        // stb_lang/timezone cookies and an stb_type=MAG250 handshake param —
+        // mixed MAG/OTT signals that panels may flag as spoofing (UA says
+        // "OTT Navigator", a phone app). Clean OTT-like requests now.
         val portalHttp = ("$baseUrl/").toHttpUrlOrNull()
         if (portalHttp != null) {
             cookieJar.seed(
                 portalHttp,
                 listOf(
                     Cookie.Builder().name("mac").value(mac)
-                        .domain(portalHttp.host).path("/").build(),
-                    Cookie.Builder().name("stb_lang").value("en")
-                        .domain(portalHttp.host).path("/").build(),
-                    Cookie.Builder().name("timezone").value("Asia/Kuala_Lumpur")
                         .domain(portalHttp.host).path("/").build()
                 )
             )
@@ -234,6 +290,10 @@ class StalkerApi(
             val body = response.body?.string().orEmpty()
             if (body.isBlank()) {
                 throw StalkerException("Empty response from portal (HTTP ${response.code})")
+            }
+            // v3.4: capture the last get_profile body for Copy Debug Info.
+            if (type == "stb" && action == "get_profile") {
+                debugProfileResponse = body.replace(Regex("\\s+"), " ").take(1000)
             }
             try {
                 JSONObject(body)
@@ -396,7 +456,11 @@ class StalkerApi(
     suspend fun handshake(): String {
         token = null
         syncTokenCookie() // drop any stale token cookie before handshaking
-        val raw = getRaw("stb", "handshake", mapOf("stb_type" to "MAG250"))
+        // v3.4: NO stb_type param — clean OTT-like request (was MAG250).
+        debugHandshakeUrl = buildUrl("stb", "handshake").toString()
+        debugHandshakeHeaders = debugHeaderDump()
+        val raw = getRaw("stb", "handshake")
+        debugHandshakeResponse = raw.replace(Regex("\\s+"), " ").take(1000)
         android.util.Log.i(
             "StalkerApi",
             "handshake: raw=${raw.replace(Regex("\\s+"), " ").take(500)}"
