@@ -37,17 +37,18 @@ class StalkerApi(
 
     private val baseUrl: String = portalUrl.trim().trimEnd('/')
 
-    /** Full MAG hardware identity, stable per install (see DeviceIds). */
-    private val deviceIds: DeviceIds = DeviceIds.get(context)
-
     /** Base portal URL (shown in the on-device Portal API Probe header). */
     val probePortalUrl: String get() = baseUrl
 
     /** Box MAC (shown in the on-device Portal API Probe header). */
     val probeBoxMac: String get() = mac
 
-    /** Device fingerprint summary (shown in the on-device Probe header). */
-    val probeDeviceIds: String get() = deviceIds.summary()
+    /**
+     * Device fingerprint status (shown in the on-device Probe header).
+     * v2.3: device IDs are not sent — the panel may bind MAC+device IDs,
+     * and our random IDs broke the match (OTT sends none / different ones).
+     */
+    val probeDeviceIds: String get() = "disabled"
 
     @Volatile
     private var token: String? = null
@@ -107,30 +108,15 @@ class StalkerApi(
         // query parsing without URL-decoding, so %3A MACs never match their DB.
         token?.let { builder.addEncodedQueryParameter("token", it) }
         builder.addEncodedQueryParameter("mac", mac)
-        addDeviceParams(builder)
+        // v2.3: NO device IDs (sn/device_id/device_id2/signature) — the panel
+        // may validate MAC+device IDs as a pair; our random IDs broke the match.
         for ((key, value) in extra) {
             builder.addQueryParameter(key, value)
         }
         return builder.build()
     }
 
-    /** MAG hardware fingerprint query params, sent with every request. */
-    private fun addDeviceParams(builder: HttpUrl.Builder) {
-        // v2.2: unencoded — see buildUrl()
-        builder.addEncodedQueryParameter("sn", deviceIds.sn)
-        builder.addEncodedQueryParameter("device_id", deviceIds.deviceId)
-        builder.addEncodedQueryParameter("device_id2", deviceIds.deviceId2)
-        builder.addEncodedQueryParameter("signature", deviceIds.signature)
-    }
-
-    /** MAG hardware fingerprint form params (POST variant). */
-    private fun addDeviceParams(form: okhttp3.FormBody.Builder) {
-        // v2.2: unencoded — naive panels may not URL-decode form bodies either
-        form.addEncoded("sn", deviceIds.sn)
-        form.addEncoded("device_id", deviceIds.deviceId)
-        form.addEncoded("device_id2", deviceIds.deviceId2)
-        form.addEncoded("signature", deviceIds.signature)
-    }
+    // v2.3: device ID params removed (see buildUrl()) — both helpers deleted.
 
     private suspend fun get(
         type: String,
@@ -210,7 +196,7 @@ class StalkerApi(
             url.addQueryParameter("JsHttpRequest", "1-xml")
             token?.let { url.addEncodedQueryParameter("token", it) }
             url.addEncodedQueryParameter("mac", mac)
-            addDeviceParams(url)
+            // v2.3: no device IDs
             for ((k, v) in extra) {
                 url.addQueryParameter(k, v)
             }
@@ -267,7 +253,7 @@ class StalkerApi(
                 .add("JsHttpRequest", "1-xml")
             token?.let { form.addEncoded("token", it) }
             form.addEncoded("mac", mac)
-            addDeviceParams(form)
+            // v2.3: no device IDs
             for ((k, v) in extra) form.add(k, v)
             val req = Request.Builder()
                 .url("$baseUrl/portal.php")
