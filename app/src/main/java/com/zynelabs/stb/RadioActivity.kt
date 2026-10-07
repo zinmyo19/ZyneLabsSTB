@@ -49,10 +49,7 @@ class RadioActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                val api = StalkerApi(
-                    Prefs.getPortalUrl(this@RadioActivity),
-                    Prefs.getMac(this@RadioActivity)
-                )
+                val api = StalkerSession.get(this@RadioActivity)
                 val genres = try {
                     api.getGenres().associate { it.id to it.title.lowercase() }
                 } catch (e: Exception) {
