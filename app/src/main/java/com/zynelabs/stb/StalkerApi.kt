@@ -68,6 +68,14 @@ import kotlinx.coroutines.delay
  * the profile capture so Copy Debug Info always reflects the CURRENT
  * session, and get() logs "TOKEN MISMATCH!" if the wire token ever
  * differs from the most recent handshake token (real race detection).
+ *
+ * v3.9: API base = {host}/server/load.php. Dominic's packet capture of
+ * OTT Navigator proved the API lives at http://bingeiptv.xyz/server/
+ * load.php while the portal URL entered is http://bingeiptv.xyz:80/c/ —
+ * the /c/ is the CLIENT path, not the API path (v3.8's {portal}/load.php
+ * 404'd). handshake() tries {host}/server/load.php first, then
+ * {portal}/load.php, then {portal}/portal.php, keeping the working
+ * endpoint in apiBase for all subsequent calls.
  */
 class StalkerApi(
     portalUrl: String,
@@ -99,8 +107,43 @@ class StalkerApi(
 
     private val baseUrl: String = portalUrl.trim().trimEnd('/')
 
+    /**
+     * v3.9: host root extracted from the portal URL (scheme + host + port,
+     * no path). Dominic's packet capture proved OTT Navigator hits
+     * http://bingeiptv.xyz/server/load.php while the portal URL entered
+     * is http://bingeiptv.xyz:80/c/ — the /c/ is the CLIENT path, not the
+     * API path. The native-app API lives at {host}/server/load.php.
+     */
+    private val hostBase: String = run {
+        val u = ("$baseUrl/").toHttpUrlOrNull()
+        if (u != null) {
+            val portPart =
+                if (u.port != HttpUrl.defaultPort(u.scheme)) ":${u.port}" else ""
+            "${u.scheme}://${u.host}$portPart"
+        } else baseUrl
+    }
+
+    /**
+     * v3.9: candidate API endpoints, tried in order by [handshake].
+     * 1. {host}/server/load.php — OTT-verified (packet capture)
+     * 2. {portal}/load.php — v3.8 behavior (some panels serve it there)
+     * 3. {portal}/portal.php — v3.7 behavior (last resort)
+     */
+    private fun apiBaseCandidates(): List<String> = listOf(
+        "$hostBase/server/load.php",
+        "$baseUrl/load.php",
+        "$baseUrl/portal.php"
+    )
+
+    /** v3.9: the currently active API endpoint (set by [handshake]). */
+    @Volatile
+    private var apiBase: String = "$hostBase/server/load.php"
+
     /** Base portal URL (shown in the on-device Portal API Probe header). */
     val probePortalUrl: String get() = baseUrl
+
+    /** v3.9: active API base (shown in Copy Debug Info). */
+    val probeApiBase: String get() = apiBase
 
     /** Box MAC (shown in the on-device Portal API Probe header). */
     val probeBoxMac: String get() = mac
@@ -199,6 +242,7 @@ class StalkerApi(
     fun buildDebugInfo(): String {
         val sb = StringBuilder()
         sb.appendLine("Portal: $baseUrl")
+        sb.appendLine("API base: $apiBase")
         sb.appendLine("MAC: $mac")
         sb.appendLine("Auth method: $authMethod")
         sb.appendLine()
@@ -292,7 +336,10 @@ class StalkerApi(
         action: String,
         extra: Map<String, String> = emptyMap()
     ): HttpUrl {
-        val builder = ("$baseUrl/load.php").toHttpUrlOrNull()?.newBuilder()
+        // v3.9: apiBase — {host}/server/load.php (OTT-verified), with
+        // fallback to {portal}/load.php then {portal}/portal.php (see
+        // handshake(), which sets apiBase to the working endpoint).
+        val builder = apiBase.toHttpUrlOrNull()?.newBuilder()
             ?: throw StalkerException("Invalid portal URL")
         builder.addQueryParameter("type", type)
         builder.addQueryParameter("action", action)
@@ -438,7 +485,7 @@ class StalkerApi(
                     if (token.isNullOrBlank()) handshake()
                 }
             }
-            val url = ("$baseUrl/load.php").toHttpUrlOrNull()?.newBuilder()
+            val url = apiBase.toHttpUrlOrNull()?.newBuilder()
                 ?: return@withContext ProbeResult(-1, 0, "", "Invalid portal URL")
             url.addQueryParameter("type", type)
             url.addQueryParameter("action", action)
@@ -518,7 +565,7 @@ class StalkerApi(
                 token?.takeIf { it.isNotBlank() }?.let { form.add("token", it) }
             }
             val req = Request.Builder()
-                .url("$baseUrl/load.php")
+                .url(apiBase)
                 .headers(buildHeaders())
                 .post(form.build())
                 .build()
@@ -554,31 +601,59 @@ class StalkerApi(
         // v3.4: NO stb_type param — clean OTT-like request (was MAG250).
         // v3.8: handshake includes empty token= param, matching the working
         // native app: load.php?type=stb&action=handshake&token=&JsHttpRequest=1-xml
-        debugHandshakeUrl = buildUrl("stb", "handshake", mapOf("token" to "")).toString()
-        debugHandshakeHeaders = debugHeaderDump()
-        val raw = getRaw("stb", "handshake", mapOf("token" to ""))
-        debugHandshakeResponse = raw.replace(Regex("\\s+"), " ").take(1000)
-        android.util.Log.i(
-            "StalkerApi",
-            "handshake: raw=${raw.replace(Regex("\\s+"), " ").take(500)}"
-        )
-        val response = try {
-            JSONObject(raw)
-        } catch (e: Exception) {
-            throw StalkerException("Invalid JSON from portal (handshake)")
+        // v3.9: try the API bases in order — {host}/server/load.php
+        // (OTT-verified via packet capture), then {portal}/load.php, then
+        // {portal}/portal.php. A 404/empty response means the wrong path,
+        // so we fall through; anything else (auth errors, bad JSON)
+        // rethrows immediately. apiBase keeps the working endpoint for all
+        // subsequent calls.
+        var lastError: StalkerException? = null
+        for (candidate in apiBaseCandidates()) {
+            apiBase = candidate
+            try {
+                debugHandshakeUrl =
+                    buildUrl("stb", "handshake", mapOf("token" to "")).toString()
+                debugHandshakeHeaders = debugHeaderDump()
+                val raw = getRaw("stb", "handshake", mapOf("token" to ""))
+                debugHandshakeResponse = raw.replace(Regex("\\s+"), " ").take(1000)
+                android.util.Log.i(
+                    "StalkerApi",
+                    "handshake: OK via $candidate, " +
+                        "raw=${raw.replace(Regex("\\s+"), " ").take(500)}"
+                )
+                val response = try {
+                    JSONObject(raw)
+                } catch (e: Exception) {
+                    throw StalkerException("Invalid JSON from portal (handshake)")
+                }
+                val js = jsPayload(response)
+                val newToken = js.optString("token", "")
+                if (newToken.isBlank()) {
+                    throw StalkerException("Handshake failed: no token issued")
+                }
+                token = newToken
+                // v3.7: freshness anchor — set IMMEDIATELY after parsing,
+                // before any other API call can run. get() asserts the wire
+                // token matches this (TOKEN MISMATCH log otherwise).
+                lastHandshakeToken = newToken
+                syncTokenCookie() // TOKEN_COOKIE: publish the fresh token
+                return newToken
+            } catch (e: StalkerException) {
+                val msg = e.message.orEmpty()
+                val wrongPath = msg.contains("Portal HTTP 404") ||
+                    msg.contains("Empty response from portal")
+                if (wrongPath) {
+                    android.util.Log.w(
+                        "StalkerApi",
+                        "handshake: $candidate failed (${msg.take(60)}), trying next base"
+                    )
+                    lastError = e
+                    continue
+                }
+                throw e
+            }
         }
-        val js = jsPayload(response)
-        val newToken = js.optString("token", "")
-        if (newToken.isBlank()) {
-            throw StalkerException("Handshake failed: no token issued")
-        }
-        token = newToken
-        // v3.7: freshness anchor — set IMMEDIATELY after parsing, before
-        // any other API call can run. get() asserts the wire token
-        // matches this (TOKEN MISMATCH log otherwise).
-        lastHandshakeToken = newToken
-        syncTokenCookie() // TOKEN_COOKIE: publish the fresh token as a cookie
-        return newToken
+        throw lastError ?: StalkerException("Handshake failed on all API bases")
     }
 
     /**
