@@ -65,10 +65,8 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                val api = StalkerApi(
-                    Prefs.getPortalUrl(this@MainActivity),
-                    Prefs.getMac(this@MainActivity)
-                )
+                StalkerSession.reset() // URL/MAC may have changed on the setup screen
+                val api = StalkerSession.get(this@MainActivity)
                 api.handshake()
                 api.getProfile() // validates the session works
                 startActivity(Intent(this@MainActivity, HomeActivity::class.java))
