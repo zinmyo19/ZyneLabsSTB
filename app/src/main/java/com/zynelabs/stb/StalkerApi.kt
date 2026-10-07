@@ -99,12 +99,18 @@ class StalkerApi(portalUrl: String, private val mac: String) {
             .header("X-Requested-With", "XMLHttpRequest")
             .build()
         client.newCall(request).execute().use { response ->
-            val body = response.body?.string()
-                ?: throw StalkerException("Empty response from portal")
+            if (!response.isSuccessful) {
+                throw StalkerException("Portal HTTP ${response.code}")
+            }
+            val body = response.body?.string().orEmpty()
+            if (body.isBlank()) {
+                throw StalkerException("Empty response from portal (HTTP ${response.code})")
+            }
             try {
                 JSONObject(body)
             } catch (e: Exception) {
-                throw StalkerException("Invalid JSON from portal")
+                val snippet = body.replace(Regex("\\s+"), " ").take(150)
+                throw StalkerException("Invalid JSON from portal (HTTP ${response.code}): $snippet")
             }
         }
     }
