@@ -110,6 +110,14 @@ import kotlinx.coroutines.delay
  * performs no handshake of its own), and only on total failure does ONE
  * more fresh handshake + a second 4-method round. Max 2 handshakes per
  * connect attempt. Copy Debug Info shows the handshake count.
+ *
+ * v4.3: OTT-exact get_ordered_list URL. v4.2 sent
+ * ?type=itv&action=get_ordered_list&JsHttpRequest=1-xml&p=1 but Dominic's
+ * packet captures show OTT ALWAYS sends genre=*&fav=0 with params in order
+ * type,action,genre,fav,p,JsHttpRequest — and bingeiptv.xyz answered our
+ * shape with HTTP 200 + empty body. buildUrl() now emits the OTT shape for
+ * ALL get_ordered_list calls (validation probe, paginated loading, vod).
+ * Other actions (handshake, create_link, get_epg, ...) are unchanged.
  */
 class StalkerApi(
     portalUrl: String,
@@ -409,28 +417,43 @@ class StalkerApi(
             ?: throw StalkerException("Invalid portal URL")
         builder.addQueryParameter("type", type)
         builder.addQueryParameter("action", action)
-        // v3.8: load.php (NOT portal.php) — the native-app API endpoint.
-        // IPTV Stalker Player v1.43 uses load.php; portal.php is the MAG
-        // web-UI endpoint that rejects non-MAG clients ("Your STB is not
-        // supported"). The working app SENDS JsHttpRequest=1-xml with
-        // load.php, so we include it (v3.5's removal was portal.php-specific).
-        // v3.8: JsHttpRequest=1-xml — the working native app (IPTV Stalker
-        // v1.43) sends this with load.php on every request.
-        builder.addQueryParameter("JsHttpRequest", "1-xml")
-        // v2.4: NO token=/mac= query params. Token goes in the Authorization:
-        // Bearer header (see buildHeaders()); MAC goes in the mac cookie.
-        // Stock Ministra behavior — sending them as query params makes the
-        // portal unable to associate requests with the session (id:null).
-        // v3.1: TOKEN_PARAM portals are the exception — they get
-        // token=<token> as a query param (see below); buildHeaders() then
-        // omits the Authorization header.
-        // v2.3: no device IDs (sn/device_id/device_id2/signature).
-        // v2.6: extra params (notably the channel `cmd` for create_link, which
-        // is itself a URL) are sent UNENCODED. v2.2 proved this portal does
-        // naive query parsing without URL-decoding — an encoded cmd like
-        // "ffmpeg%20http%3A%2F%2F..." would never match server-side.
-        for ((key, value) in extra) {
-            builder.addEncodedQueryParameter(key, value)
+        if (action == "get_ordered_list") {
+            // v4.3: OTT-exact URL shape — Dominic's packet captures
+            // (bingeiptv.xyz, wafasiad.com) show OTT ALWAYS sends
+            // genre=*&fav=0, with params in order:
+            // type, action, genre, fav, p, JsHttpRequest.
+            // v4.2 omitted genre/fav and put JsHttpRequest before p —
+            // bingeiptv.xyz answered HTTP 200 + empty body. Match OTT exactly.
+            builder.addQueryParameter("genre", "*")
+            builder.addQueryParameter("fav", "0")
+            for ((key, value) in extra) {
+                builder.addEncodedQueryParameter(key, value)
+            }
+            builder.addQueryParameter("JsHttpRequest", "1-xml")
+        } else {
+            // v3.8: load.php (NOT portal.php) — the native-app API endpoint.
+            // IPTV Stalker Player v1.43 uses load.php; portal.php is the MAG
+            // web-UI endpoint that rejects non-MAG clients ("Your STB is not
+            // supported"). The working app SENDS JsHttpRequest=1-xml with
+            // load.php, so we include it (v3.5's removal was portal.php-specific).
+            // v3.8: JsHttpRequest=1-xml — the working native app (IPTV Stalker
+            // v1.43) sends this with load.php on every request.
+            builder.addQueryParameter("JsHttpRequest", "1-xml")
+            // v2.4: NO token/mac query params. Token goes in the Authorization
+            // Bearer header (see buildHeaders()); MAC goes in the mac cookie.
+            // Stock Ministra behavior — sending them as query params makes the
+            // portal unable to associate requests with the session (id:null).
+            // v3.1: TOKEN_PARAM portals are the exception — they get
+            // token=<token> as a query param (see below); buildHeaders() then
+            // omits the Authorization header.
+            // v2.3: no device IDs (sn/device_id/device_id2/signature).
+            // v2.6: extra params (notably the channel `cmd` for create_link, which
+            // is itself a URL) are sent UNENCODED. v2.2 proved this portal does
+            // naive query parsing without URL-decoding — an encoded cmd like
+            // "ffmpeg%20http%3A%2F%2F..." would never match server-side.
+            for ((key, value) in extra) {
+                builder.addEncodedQueryParameter(key, value)
+            }
         }
         // v3.1: token-as-query-param auth (older panel variants).
         // The handshake runs with a blank token, so it never carries one.
