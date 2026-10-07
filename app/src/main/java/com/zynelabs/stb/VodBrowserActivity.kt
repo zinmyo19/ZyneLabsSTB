@@ -71,10 +71,7 @@ class VodBrowserActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                val api = StalkerApi(
-                    Prefs.getPortalUrl(this@VodBrowserActivity),
-                    Prefs.getMac(this@VodBrowserActivity)
-                )
+                val api = StalkerSession.get(this@VodBrowserActivity)
                 val rows: List<RowItem>
                 val catId = categoryId
                 if (catId == null) {
