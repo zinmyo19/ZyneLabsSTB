@@ -186,14 +186,16 @@ class StalkerApi(
 
     /**
      * Raw probe: performs GET type/action with token+mac and the standard
-     * headers, returning the HTTP status, body length and a 100-char snippet.
+     * headers, returning the HTTP status, body length and a snippet of
+     * [snippetLen] chars (default 100).
      * Used by the on-device Portal API Probe to discover which actions a
      * portal actually implements. Never throws.
      */
     suspend fun probe(
         type: String,
         action: String,
-        extra: Map<String, String> = emptyMap()
+        extra: Map<String, String> = emptyMap(),
+        snippetLen: Int = 100
     ): ProbeResult = withContext(Dispatchers.IO) {
         try {
             if (token.isNullOrBlank()) handshake()
@@ -211,7 +213,7 @@ class StalkerApi(
             val req = Request.Builder().url(url.build()).headers(buildHeaders()).get().build()
             client.newCall(req).execute().use { resp ->
                 val body = resp.body?.string().orEmpty()
-                val snippet = body.replace(Regex("\\s+"), " ").take(100)
+                val snippet = body.replace(Regex("\\s+"), " ").take(snippetLen)
                 ProbeResult(resp.code, body.length, snippet, "")
             }
         } catch (e: Exception) {
@@ -330,6 +332,15 @@ class StalkerApi(
     /** Returns the raw profile JSON object of the box. */
     suspend fun getProfile(): JSONObject = withSession {
         jsPayload(get("stb", "get_profile"))
+    }
+
+    /**
+     * Returns true if the portal recognizes this MAC as a registered box.
+     * An unregistered MAC gets a default profile with a null/blank "id".
+     */
+    fun isMacRegistered(profile: JSONObject): Boolean {
+        // optString returns "" for JSON null
+        return profile.optString("id").isNotBlank()
     }
 
     /** Returns all TV channels, sorted by channel number. */
