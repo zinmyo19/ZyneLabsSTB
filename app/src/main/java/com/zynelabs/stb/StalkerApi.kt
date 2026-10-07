@@ -103,8 +103,10 @@ class StalkerApi(
         builder.addQueryParameter("type", type)
         builder.addQueryParameter("action", action)
         builder.addQueryParameter("JsHttpRequest", "1-xml")
-        token?.let { builder.addQueryParameter("token", it) }
-        builder.addQueryParameter("mac", mac)
+        // v2.2: send token/mac unencoded (literal colons). Some panels do naive
+        // query parsing without URL-decoding, so %3A MACs never match their DB.
+        token?.let { builder.addEncodedQueryParameter("token", it) }
+        builder.addEncodedQueryParameter("mac", mac)
         addDeviceParams(builder)
         for ((key, value) in extra) {
             builder.addQueryParameter(key, value)
@@ -114,18 +116,20 @@ class StalkerApi(
 
     /** MAG hardware fingerprint query params, sent with every request. */
     private fun addDeviceParams(builder: HttpUrl.Builder) {
-        builder.addQueryParameter("sn", deviceIds.sn)
-        builder.addQueryParameter("device_id", deviceIds.deviceId)
-        builder.addQueryParameter("device_id2", deviceIds.deviceId2)
-        builder.addQueryParameter("signature", deviceIds.signature)
+        // v2.2: unencoded — see buildUrl()
+        builder.addEncodedQueryParameter("sn", deviceIds.sn)
+        builder.addEncodedQueryParameter("device_id", deviceIds.deviceId)
+        builder.addEncodedQueryParameter("device_id2", deviceIds.deviceId2)
+        builder.addEncodedQueryParameter("signature", deviceIds.signature)
     }
 
     /** MAG hardware fingerprint form params (POST variant). */
     private fun addDeviceParams(form: okhttp3.FormBody.Builder) {
-        form.add("sn", deviceIds.sn)
-        form.add("device_id", deviceIds.deviceId)
-        form.add("device_id2", deviceIds.deviceId2)
-        form.add("signature", deviceIds.signature)
+        // v2.2: unencoded — naive panels may not URL-decode form bodies either
+        form.addEncoded("sn", deviceIds.sn)
+        form.addEncoded("device_id", deviceIds.deviceId)
+        form.addEncoded("device_id2", deviceIds.deviceId2)
+        form.addEncoded("signature", deviceIds.signature)
     }
 
     private suspend fun get(
@@ -204,8 +208,8 @@ class StalkerApi(
             url.addQueryParameter("type", type)
             url.addQueryParameter("action", action)
             url.addQueryParameter("JsHttpRequest", "1-xml")
-            token?.let { url.addQueryParameter("token", it) }
-            url.addQueryParameter("mac", mac)
+            token?.let { url.addEncodedQueryParameter("token", it) }
+            url.addEncodedQueryParameter("mac", mac)
             addDeviceParams(url)
             for ((k, v) in extra) {
                 url.addQueryParameter(k, v)
@@ -261,8 +265,8 @@ class StalkerApi(
                 .add("type", type)
                 .add("action", action)
                 .add("JsHttpRequest", "1-xml")
-            token?.let { form.add("token", it) }
-            form.add("mac", mac)
+            token?.let { form.addEncoded("token", it) }
+            form.addEncoded("mac", mac)
             addDeviceParams(form)
             for ((k, v) in extra) form.add(k, v)
             val req = Request.Builder()
