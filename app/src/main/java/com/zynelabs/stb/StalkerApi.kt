@@ -39,19 +39,22 @@ class StalkerApi(
     context: android.content.Context
 ) {
 
-    open class StalkerException(message: String) : Exception(message)
-
     /**
-     * Marker for auth/session failures that warrant a re-handshake + retry.
-     * v2.5: the portal invalidates tokens (a handshake from elsewhere, or
-     * OTT reconnecting, kills our token) and answers with HTTP 200 + empty
-     * body — or a profile with id:null — instead of a 401.
+     * v2.5: [isAuthFailure] marks auth/session failures that warrant a
+     * re-handshake + retry. The portal invalidates tokens (a handshake from
+     * elsewhere, or OTT reconnecting, kills our token) and answers with
+     * HTTP 200 + empty body — or a profile with id:null — instead of a 401.
+     * (v2.6 fix: was a private subclass of StalkerException, which the
+     * Kotlin compiler rejected as "cannot inherit from final type".)
      */
-    private class AuthFailureException(message: String) : StalkerException(message)
+    open class StalkerException(
+        message: String,
+        val isAuthFailure: Boolean = false
+    ) : Exception(message)
 
     /** True when [e] looks like a dead/invalid session (not a network blip). */
     private fun isAuthFailure(e: StalkerException): Boolean {
-        if (e is AuthFailureException) return true
+        if (e.isAuthFailure) return true
         val msg = e.message.orEmpty()
         return msg.contains("Empty response from portal") ||
             msg.contains("Invalid JSON from portal") ||
@@ -364,7 +367,7 @@ class StalkerApi(
                 // Still failing after a FRESH handshake: if the profile
                 // STILL has id:null, the MAC itself isn't registered
                 // (not a dead token) — say so plainly.
-                if (retryEx is AuthFailureException && originalError is AuthFailureException) {
+                if ((retryEx as? StalkerException)?.isAuthFailure == true && originalError.isAuthFailure) {
                     throw StalkerException("MAC not registered on this portal")
                 }
                 throw originalError
@@ -382,7 +385,10 @@ class StalkerApi(
         // marker so withSession re-handshakes and retries once before
         // concluding the MAC is unregistered.
         if (!isMacRegistered(profile)) {
-            throw AuthFailureException("Portal returned an empty profile (id:null)")
+            throw StalkerException(
+                "Portal returned an empty profile (id:null)",
+                isAuthFailure = true
+            )
         }
         profile
     }
