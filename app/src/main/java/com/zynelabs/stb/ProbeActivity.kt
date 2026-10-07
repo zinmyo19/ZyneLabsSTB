@@ -52,6 +52,7 @@ class ProbeActivity : AppCompatActivity() {
 
                 appendLine("Portal: " + api.probePortalUrl)
                 appendLine("MAC: " + api.probeBoxMac)
+                appendLine("Device: " + api.probeDeviceIds)
 
                 // Step 0 — fetch the portal index page to identify the system
                 // (Ministra portal page? something else? empty?).
