@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v5.1: teal hexagon cube outline (mockup header logo). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="40dp"
+    android:height="40dp"
+    android:viewportWidth="40"
+    android:viewportHeight="40">
+    <path
+        android:strokeColor="@color/teal"
+        android:strokeWidth="2.5"
+        android:strokeLineJoin="round"
+        android:pathData="M20,3 L34,11 L34,29 L20,37 L6,29 L6,11 Z" />
+    <path
+        android:strokeColor="@color/teal"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M20,3 L20,20 L34,11 M20,20 L6,11 M20,20 L20,37" />
+</vector>
