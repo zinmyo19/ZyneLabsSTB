@@ -34,7 +34,7 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
             android:text="STB"
-            android:textColor="@color/teal"
+            android:textColor="@color/gold"
             android:textSize="24sp"
             android:textStyle="bold" />
 
@@ -80,7 +80,7 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
                 android:text="👤"
-                android:textColor="@color/teal"
+                android:textColor="@color/gold"
                 android:textSize="18sp" />
         </FrameLayout>
     </LinearLayout>
@@ -109,7 +109,7 @@
                 android:layout_marginBottom="20dp"
                 android:letterSpacing="0.3"
                 android:text="NAVIGATION"
-                android:textColor="@color/teal"
+                android:textColor="@color/gold"
                 android:textSize="12sp" />
 
             <LinearLayout
@@ -245,7 +245,7 @@
                             android:layout_weight="1"
                             android:max="100"
                             android:progress="40"
-                            android:progressTint="@color/teal"
+                            android:progressTint="@color/gold"
                             android:progressBackgroundTint="#233646" />
 
                         <TextView
@@ -271,7 +271,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Popular Channels"
-                        android:textColor="@color/text_primary"
+                        android:textColor="@color/gold"
                         android:textSize="18sp"
                         android:textStyle="bold" />
 
