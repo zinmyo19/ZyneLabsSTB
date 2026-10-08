@@ -160,6 +160,8 @@ class ChannelListActivity : AppCompatActivity() {
                 .putExtra(PlayerActivity.EXTRA_CMD, channel.cmd)
                 .putExtra(PlayerActivity.EXTRA_NAME, channel.name)
                 .putExtra(PlayerActivity.EXTRA_CMD_TYPE, PlayerActivity.TYPE_ITV)
+                .putExtra(PlayerActivity.EXTRA_CHANNEL_ID, channel.id)
+                .putExtra(PlayerActivity.EXTRA_GENRE_ID, channel.genreId)
         )
     }
 
