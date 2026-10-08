@@ -22,10 +22,17 @@ import kotlinx.coroutines.delay
  * as dead and ignored (a fresh auth runs instead).
  */
 private const val SESSION_TTL_MS = 12L * 3600L * 1000L
-/** v4.6: rolling window for the handshake cap. */
-private const val CAP_WINDOW_MS = 3600L * 1000L
-/** v4.6: max handshakes per [CAP_WINDOW_MS] per portal+MAC (hard cap). */
+/** v4.7: rolling window for the handshake cap — 15 min (was 1h in v4.6).
+ * The 1h window punished users far too long after v4.5's handshake spam. */
+private const val CAP_WINDOW_MS = 15L * 60L * 1000L
+/** v4.7: max FAILED handshakes per [CAP_WINDOW_MS] per portal+MAC.
+ * Only FAILED handshakes count — a handshake that returns a valid token
+ * is success, not spam (v4.6 counted every attempt, punishing success). */
 private const val CAP_MAX = 3
+/** v4.7: versionCode that introduced the fixed rate limiter. The first run
+ * of this version wipes poisoned handshake timestamps — v4.5's
+ * 14-handshake spam was persisted and blocked v4.6 from ever handshaking. */
+private const val RATE_LIMIT_FIX_VERSION = 38
 
 /**
  * v4.6: a persisted working session — token + apiBase + authMethod + flow —
@@ -443,7 +450,8 @@ class StalkerApi(
         sb.appendLine("Handshakes: $debugHandshakeCount")
         // v4.6: session persistence diagnostics.
         sb.appendLine("Session: $debugSessionSource")
-        sb.appendLine("Handshakes this hour: ${sessionStore.handshakesThisHour()}")
+        // v4.7: cap counts FAILED handshakes in a 15-min window now.
+        sb.appendLine("Failed handshakes (15 min): ${sessionStore.failedHandshakesInWindow()}")
         sb.appendLine()
         sb.appendLine("Handshake URL:")
         sb.appendLine(debugHandshakeUrl ?: "(none yet)")
@@ -513,6 +521,21 @@ class StalkerApi(
                     Cookie.Builder().name("timezone").value("GMT")
                         .domain(portalHttp.host).path("/").build()
                 )
+            )
+        }
+        // v4.7: first run of the fixed rate limiter — wipe poisoned
+        // handshake timestamps. v4.5's 14-handshake spam was persisted and
+        // blocked v4.6 from ever handshaking (cap hit with 0 new
+        // handshakes). Everyone gets a fresh cap on upgrade.
+        val meta = appContext.getSharedPreferences(
+            "zynelabs_stb_session", android.content.Context.MODE_PRIVATE
+        )
+        if (meta.getInt("last_version_code", 0) < RATE_LIMIT_FIX_VERSION) {
+            sessionStore.clearAllTimestamps()
+            meta.edit().putInt("last_version_code", RATE_LIMIT_FIX_VERSION).apply()
+            android.util.Log.i(
+                "StalkerApi",
+                "v4.7 upgrade: cleared poisoned handshake timestamps"
             )
         }
     }
@@ -855,11 +878,12 @@ class StalkerApi(
      * single-element list ({portal}/portal.php) to pin the v2.4 endpoint.
      */
     private suspend fun handshakeOn(candidates: List<String>): String {
-        // v4.6: HARD CAP — max 3 handshakes/hour per portal+MAC. The v4.5
-        // field test hit Handshakes: 14 and the portal invalidated our
-        // working session as abuse. checkCap() throws a NON-auth-failure
-        // StalkerException so recovery ladders don't catch it — the UI
-        // tells the user to wait instead of hammering.
+        // v4.7: HARD CAP — max 3 FAILED handshakes per 15 min per
+        // portal+MAC (was: every attempt counted, 1h window — v4.5's
+        // 14-handshake spam poisoned the persisted cap and blocked v4.6).
+        // checkCap() throws a NON-auth-failure StalkerException so
+        // recovery ladders don't catch it — the UI tells the user the
+        // actual wait time instead of hammering.
         sessionStore.checkCap()
         // v4.6: keep the old token — if THIS handshake fails (network
         // blip), the caller retries with the previous session instead of
@@ -868,9 +892,10 @@ class StalkerApi(
         token = null
         // v4.2: count every handshake attempt (see debugHandshakeCount).
         debugHandshakeCount++
-        // v4.6: record BEFORE attempting — even a failed handshake hits the
-        // portal and must count against the cap.
-        sessionStore.recordHandshake()
+        // v4.7: NO pre-recording — only a FAILED handshake counts against
+        // the cap. A handshake that returns a valid token is success,
+        // not spam. (v4.6 recorded before attempting, so even successful
+        // handshakes burned the cap.)
         // v4.1: reset the per-session validation capture (first
         // itv/get_ordered_list — see [get]). The StalkerSession singleton
         // reuses this instance across connects, and the auth ladder
@@ -955,6 +980,11 @@ class StalkerApi(
         }
         throw lastError ?: StalkerException("Handshake failed on all API bases")
         } catch (e: Exception) {
+            // v4.7: THIS handshake FAILED — record it against the cap
+            // (success is not spam). checkCap()'s own throw never reaches
+            // here (it fires before the try), so cap-blocks don't
+            // self-extend.
+            sessionStore.recordFailedHandshake()
             // v4.6: don't destroy a possibly-good token when THIS handshake
             // fails (network blip, all bases 404) — restore the previous
             // token so the caller retries with the old session instead of
@@ -1418,6 +1448,23 @@ class StalkerApi(
         return profile.optString("id").isNotBlank()
     }
 
+    /**
+     * v4.7: manual escape hatch (Settings → Reset connection). Clears the
+     * cached session (memory + prefs) AND the handshake timestamps for
+     * this portal+MAC, then drops the shared instance. The next Connect
+     * starts completely fresh — no waiting out the cap.
+     */
+    fun resetConnection() {
+        sessionStore.resetConnection()
+        token = null
+        lastHandshakeToken = null
+        authMethod = AuthMethod.BEARER
+        debugFlow = "B"
+        debugSessionSource = "none"
+        debugHandshakeCount = 0
+        StalkerSession.reset()
+    }
+
     /** Returns all TV channels, sorted by channel number. */
     suspend fun getAllChannels(): List<Channel> = withSession {
         val data = jsArray(get("itv", "get_all_channels")) ?: return@withSession emptyList()
@@ -1833,22 +1880,62 @@ class StalkerApi(
                 .toMutableList()
         }
 
-        /** Throws when the hourly handshake cap is reached (not auth failure). */
+        /**
+         * v4.7: throws when the FAILED-handshake cap is reached — NOT an
+         * auth failure, so recovery ladders must not catch this. The
+         * message carries the actual wait (from the oldest failure in the
+         * window) so the user knows when to retry.
+         */
         fun checkCap() {
-            if (readTimes().size >= CAP_MAX) {
+            val times = readTimes()
+            if (times.size >= CAP_MAX) {
+                val oldest = times.minOrNull() ?: System.currentTimeMillis()
+                val waitMs = CAP_WINDOW_MS - (System.currentTimeMillis() - oldest)
+                val waitMin = ((waitMs + 59999L) / 60000L).coerceAtLeast(1L)
                 throw StalkerException(
-                    "Too many connection attempts — wait a while before retrying"
+                    "Too many connection attempts — try again in $waitMin min"
                 )
             }
         }
 
-        fun recordHandshake() {
+        /** v4.7: records a FAILED handshake (success is not spam). */
+        fun recordFailedHandshake() {
             val times = readTimes()
             times.add(System.currentTimeMillis())
             prefs.edit().putString(hkey, times.joinToString(",")).apply()
         }
 
-        fun handshakesThisHour(): Int = readTimes().size
+        fun failedHandshakesInWindow(): Int = readTimes().size
+
+        /**
+         * v4.7: clears ALL persisted handshake timestamps (every
+         * portal+MAC). Called once on upgrade to v4.7 — v4.5's
+         * 14-handshake spam was persisted and blocked v4.6 from ever
+         * handshaking again.
+         */
+        fun clearAllTimestamps() {
+            val keys = prefs.all.keys.filter { it.startsWith("h4_") }
+            if (keys.isEmpty()) return
+            val ed = prefs.edit()
+            keys.forEach { ed.remove(it) }
+            ed.apply()
+            android.util.Log.i(
+                "StalkerApi",
+                "clearAllTimestamps: wiped ${keys.size} poisoned cap key(s)"
+            )
+        }
+
+        /**
+         * v4.7: manual escape hatch (Settings → Reset connection) —
+         * clears the cached session AND the handshake timestamps for
+         * this portal+MAC. The next Connect starts completely fresh,
+         * no waiting out the cap.
+         */
+        fun resetConnection() {
+            clear()
+            prefs.edit().remove(hkey).apply()
+            android.util.Log.i("StalkerApi", "resetConnection: cleared")
+        }
     }
 
     /** v4.6: persists the current working session (called after a successful
