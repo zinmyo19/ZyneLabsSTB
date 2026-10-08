@@ -60,6 +60,35 @@ object ProviderStore {
     fun get(ctx: Context, id: String): Provider? =
         list(ctx).firstOrNull { it.id == id }
 
+    // v5.6: active provider — the one the app actually connects with.
+    private const val KEY_ACTIVE = "active_id"
+
+    fun getActiveId(ctx: Context): String =
+        prefs(ctx).getString(KEY_ACTIVE, "").orEmpty()
+
+    fun setActive(ctx: Context, id: String) {
+        prefs(ctx).edit().putString(KEY_ACTIVE, id).apply()
+    }
+
+    /** Active provider, falling back to the first saved one. */
+    fun getActive(ctx: Context): Provider? {
+        val id = getActiveId(ctx)
+        val p = if (id.isNotBlank()) get(ctx, id) else null
+        return p ?: list(ctx).firstOrNull()
+    }
+
+    /**
+     * v5.6: push the active provider into Prefs (portal_url/mac) and
+     * drop the cached StalkerApi session so the next call reconnects.
+     * Returns false when no provider is saved.
+     */
+    fun applyActive(ctx: Context): Boolean {
+        val p = getActive(ctx) ?: return false
+        Prefs.save(ctx, p.url, p.mac)
+        StalkerSession.reset()
+        return true
+    }
+
     /** Display name: explicit name, else the URL host (e.g. "brinoxel.cc"). */
     fun displayName(p: Provider): String =
         p.name.ifBlank { hostOf(p.url) }.ifBlank { p.url }
