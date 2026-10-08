@@ -1607,6 +1607,28 @@ class StalkerApi(
     }
 
     /**
+     * v5.4: HTTP headers for direct stream downloads (recording). Same MAG
+     * fingerprint the API uses, so portals that gate streams by session
+     * accept the recorder's requests.
+     */
+    fun streamHeaders(): Map<String, String> {
+        val map = LinkedHashMap<String, String>()
+        try {
+            val h = buildHeaders()
+            for (name in h.names()) {
+                // buildHeaders() may hold duplicates; last wins is fine.
+                map[name] = h[name].orEmpty()
+            }
+        } catch (e: Exception) {
+            // Fallback: minimal MAG UA.
+            map["User-Agent"] =
+                "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 " +
+                    "(KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3"
+        }
+        return map
+    }
+
+    /**
      * v2.9: repairs portal-mangled stream URLs. Detects a path segment that
      * looks like an embedded host:port (contains ':') and rebuilds the URL
      * as scheme://host/<segments before the bad one>/<last segment>?query.
