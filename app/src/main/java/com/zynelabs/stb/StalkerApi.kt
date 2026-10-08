@@ -612,9 +612,14 @@ class StalkerApi(
             // type, action, genre, fav, p, JsHttpRequest.
             // v4.2 omitted genre/fav and put JsHttpRequest before p —
             // bingeiptv.xyz answered HTTP 200 + empty body. Match OTT exactly.
-            builder.addQueryParameter("genre", "*")
+            // v5.5: single genre param — use extra's value when a genre
+            // filter is requested (v5.4 sent BOTH genre=* and genre=<id>,
+            // and portals choked on the duplicate → "No channels found").
+            val genre = extra["genre"] ?: "*"
+            builder.addQueryParameter("genre", genre)
             builder.addQueryParameter("fav", "0")
             for ((key, value) in extra) {
+                if (key == "genre") continue // already added above
                 builder.addEncodedQueryParameter(key, value)
             }
             builder.addQueryParameter("JsHttpRequest", "1-xml")
@@ -1515,7 +1520,8 @@ class StalkerApi(
         maxPages: Int = Int.MAX_VALUE,
         onProgress: ((pagesDone: Int, channelsSoFar: Int) -> Unit)? = null
     ): List<Channel> = coroutineScope {
-        val all = ArrayList<Channel>()
+        val filteredAll = ArrayList<Channel>()
+        val rawAll = ArrayList<Channel>()
         var page = 1
         var done = false
         val batchSize = 6
@@ -1527,49 +1533,69 @@ class StalkerApi(
                 async { fetchChannelPage(p, genreId) }
             }.awaitAll()
             for (res in results) {
-                all.addAll(res)
-                if (res.isEmpty()) {
+                filteredAll.addAll(res.filtered)
+                rawAll.addAll(res.raw)
+                // v5.5: terminate on RAW empty only — a fully-filtered
+                // page must not stop the loop.
+                if (res.raw.isEmpty()) {
                     done = true
                     break
                 }
             }
             page += batch.size
-            onProgress?.invoke(page - 1, all.size)
+            onProgress?.invoke(page - 1, filteredAll.size)
         }
-        all.sortedBy { it.number.toIntOrNull() ?: Int.MAX_VALUE }
+        // v5.5: if the genre filter matched nothing but the portal did
+        // return data, the portal uses a different genre-ID space — fall
+        // back to the raw list instead of showing "No channels found".
+        val result = if (filteredAll.isNotEmpty()) filteredAll else rawAll
+        result.sortedBy { it.number.toIntOrNull() ?: Int.MAX_VALUE }
     }
 
-    /** v5.3: one page of itv/get_ordered_list. Empty list = raw data empty. */
+    /**
+     * v5.5: one page of itv/get_ordered_list. Returns filtered + raw lists.
+     * Termination must be decided on RAW emptiness only — the client-side
+     * genre filter may drop every channel on a page (e.g. the portal uses
+     * a different ID space), and that must NOT stop pagination.
+     */
+    private data class ChannelPage(
+        val filtered: List<Channel>,
+        val raw: List<Channel>
+    )
+
     private suspend fun fetchChannelPage(
         page: Int,
         genreId: String?
-    ): List<Channel> = withSession {
+    ): ChannelPage = withSession {
         val extra = mutableMapOf("p" to page.toString())
         if (!genreId.isNullOrBlank()) extra["genre"] = genreId
         val js = jsPayload(get("itv", "get_ordered_list", extra))
         val data = js.optJSONArray("data")
         if (data == null || data.length() == 0) {
-            return@withSession emptyList<Channel>()
+            return@withSession ChannelPage(emptyList(), emptyList())
         }
-        val list = ArrayList<Channel>(data.length())
+        val raw = ArrayList<Channel>(data.length())
+        val filtered = ArrayList<Channel>(data.length())
         for (i in 0 until data.length()) {
             val o = data.getJSONObject(i)
             val chGenreId = o.optString("tv_genre_id")
-            // Client-side filter: the portal may ignore the genre
-            // param and return unfiltered pages.
-            if (!genreId.isNullOrBlank() && chGenreId != genreId) continue
-            list.add(
-                Channel(
-                    id = o.optString("id"),
-                    number = o.optString("number"),
-                    name = o.optString("name"),
-                    cmd = o.optString("cmd"),
-                    logo = o.optString("logo"),
-                    genreId = chGenreId
-                )
+            val ch = Channel(
+                id = o.optString("id"),
+                number = o.optString("number"),
+                name = o.optString("name"),
+                cmd = o.optString("cmd"),
+                logo = o.optString("logo"),
+                genreId = chGenreId
             )
+            raw.add(ch)
+            // Client-side filter: the portal may ignore the genre
+            // param and return unfiltered pages. Lenient: keep the
+            // channel when its genre is blank (can't verify).
+            if (genreId.isNullOrBlank() || chGenreId.isBlank() || chGenreId == genreId) {
+                filtered.add(ch)
+            }
         }
-        list
+        ChannelPage(filtered, raw)
     }
 
     /**
