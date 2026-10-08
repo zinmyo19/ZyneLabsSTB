@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.ZyneLabsSTB" parent="Theme.Material3.Dark.NoActionBar">
-        <item name="colorPrimary">@color/teal</item>
+        <item name="colorPrimary">@color/gold</item>
         <item name="colorOnPrimary">@color/background</item>
         <item name="colorSecondary">@color/teal</item>
         <item name="android:windowBackground">@color/background</item>
@@ -19,7 +19,7 @@
         <item name="android:focusable">true</item>
         <item name="android:paddingStart">12dp</item>
         <item name="android:paddingEnd">12dp</item>
-        <item name="android:textColor">@color/teal</item>
+        <item name="android:textColor">@color/gold</item>
         <item name="android:textSize">12sp</item>
     </style>
 </resources>
