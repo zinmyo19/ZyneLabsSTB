@@ -61,4 +61,16 @@
 
     <string name="error_no_vod">No videos found in this section.</string>
     <string name="error_no_radio">No radio stations found on this portal.</string>
+
+    <!-- v4.8 leanback home -->
+    <string name="nav_live_tv">Live TV</string>
+    <string name="nav_movies">Movies</string>
+    <string name="nav_series">Series</string>
+    <string name="nav_guide">Guide</string>
+    <string name="nav_settings">Settings</string>
+    <string name="banner_kicker">Featured</string>
+    <string name="banner_watch_hint">OK to watch</string>
+    <string name="subtitle_live_tv">Live TV • %1$d channels</string>
+    <string name="subtitle_vod">%1$d categories</string>
+    <string name="error_no_content">Nothing here yet.</string>
 </resources>
