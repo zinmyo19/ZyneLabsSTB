@@ -130,14 +130,14 @@
     <string name="error_no_categories">No categories found on this portal.</string>
     <string name="banner_kicker">Featured</string>
     <string name="banner_watch_hint">OK to watch</string>
-    <string name="subtitle_live_tv">Live TV • %1$d+ channels</string>
+    <string name="subtitle_live_tv">Live TV • %1$,d channels</string>
     <string name="subtitle_vod">%1$d categories</string>
     <string name="error_no_content">Nothing here yet.</string>
 
     <!-- v5.1 mockup home -->
     <string name="popular_channels">Popular Channels</string>
     <string name="see_all">See all →</string>
-    <string name="banner_meta_live">▶ Live • %1$d+ channels • 1080p</string>
+    <string name="banner_meta_live">▶ Live • %1$,d channels • 1080p</string>
     <string name="banner_meta_vod">▶ %1$d categories</string>
     <string name="zone_user">ZONE 1 • User</string>
 </resources>
