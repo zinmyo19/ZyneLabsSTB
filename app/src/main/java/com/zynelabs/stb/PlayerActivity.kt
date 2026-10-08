@@ -1,16 +1,23 @@
 package com.zynelabs.stb
 
+import android.graphics.Color
 import android.os.Bundle
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.upstream.DefaultLoadControl
 import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.CaptionStyleCompat
+import androidx.media3.ui.TrackSelectionDialogBuilder
 import com.zynelabs.stb.databinding.ActivityPlayerBinding
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -18,8 +25,9 @@ import kotlinx.coroutines.launch
  * the stream URL with Media3 ExoPlayer. The PlayerView controller handles
  * D-pad OK (show/hide controls) natively.
  *
- * Applies user settings: display aspect ratio, subtitles on/off,
- * preferred audio language.
+ * Applies user settings: display aspect ratio, subtitles on/off + style,
+ * preferred audio language, playback speed, buffer size, sleep timer.
+ * v5.0: "Tracks" button opens the audio track picker (Auto + available).
  */
 class PlayerActivity : AppCompatActivity() {
 
@@ -33,6 +41,7 @@ class PlayerActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityPlayerBinding
     private var player: ExoPlayer? = null
+    private var sleepJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,6 +55,19 @@ class PlayerActivity : AppCompatActivity() {
             return
         }
         binding.tvTitle.text = name
+
+        // v5.0: audio track picker (Auto + available tracks when the
+        // stream carries more than one).
+        binding.btnTracks.setOnClickListener {
+            player?.let { p ->
+                TrackSelectionDialogBuilder(
+                    this,
+                    getString(R.string.tracks_audio_title),
+                    p,
+                    C.TRACK_TYPE_AUDIO
+                ).build().show()
+            }
+        }
 
         resolveAndPlay(cmd)
     }
@@ -72,7 +94,20 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun initPlayer(url: String) {
         releasePlayer()
-        val newPlayer = ExoPlayer.Builder(this).build()
+
+        // v5.0: buffer size preset -> ExoPlayer load control.
+        val (minBufferMs, maxBufferMs) = Prefs.bufferDurationsMs(this)
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                minBufferMs,
+                maxBufferMs,
+                DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_MS,
+                DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS
+            )
+            .build()
+        val newPlayer = ExoPlayer.Builder(this)
+            .setLoadControl(loadControl)
+            .build()
         player = newPlayer
         binding.playerView.player = newPlayer
 
@@ -87,11 +122,51 @@ class PlayerActivity : AppCompatActivity() {
         }
         newPlayer.trackSelectionParameters = trackParams.build()
 
+        // v5.0: subtitle style (size + color).
+        binding.playerView.subtitleView?.let { sv ->
+            sv.setFractionalTextSize(Prefs.subtitleSizeFraction(this))
+            sv.setStyle(
+                CaptionStyleCompat(
+                    Prefs.subtitleColorInt(this),
+                    Color.TRANSPARENT,
+                    Color.TRANSPARENT,
+                    CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                    Color.BLACK,
+                    null
+                )
+            )
+        }
+
+        // v5.0: playback speed.
+        newPlayer.setPlaybackSpeed(Prefs.playbackSpeedValue(this))
+
         applyAspectRatio()
 
         newPlayer.setMediaItem(MediaItem.fromUri(url))
         newPlayer.prepare()
         newPlayer.play()
+
+        startSleepTimer()
+    }
+
+    /**
+     * v5.0: sleep timer — pauses playback after the configured delay.
+     * Cancelled when the player is released.
+     */
+    private fun startSleepTimer() {
+        sleepJob?.cancel()
+        sleepJob = null
+        val minutes = Prefs.sleepTimerMinutes(this)
+        if (minutes <= 0) return
+        sleepJob = lifecycleScope.launch {
+            delay(minutes * 60_000L)
+            player?.pause()
+            Toast.makeText(
+                this@PlayerActivity,
+                getString(R.string.sleep_timer_done),
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     /**
@@ -135,6 +210,8 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun releasePlayer() {
+        sleepJob?.cancel()
+        sleepJob = null
         binding.playerView.player = null
         player?.release()
         player = null
