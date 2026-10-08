@@ -18,6 +18,29 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.delay
 
 /**
+ * v4.6: session cache TTL — a persisted session older than this is treated
+ * as dead and ignored (a fresh auth runs instead).
+ */
+private const val SESSION_TTL_MS = 12L * 3600L * 1000L
+/** v4.6: rolling window for the handshake cap. */
+private const val CAP_WINDOW_MS = 3600L * 1000L
+/** v4.6: max handshakes per [CAP_WINDOW_MS] per portal+MAC (hard cap). */
+private const val CAP_MAX = 3
+
+/**
+ * v4.6: a persisted working session — token + apiBase + authMethod + flow —
+ * cached in SharedPreferences so the app reuses OTT-style long-lived
+ * sessions instead of handshaking on every launch.
+ */
+private data class SavedSession(
+    val token: String,
+    val apiBase: String,
+    val authMethod: String,
+    val flow: String,
+    val ts: Long
+)
+
+/**
  * Minimal Stalker Middleware API client (load.php).
  *
  * Supported actions:
@@ -142,6 +165,13 @@ class StalkerApi(
     private val mac: String,
     context: android.content.Context
 ) {
+
+    /**
+     * v4.6: application context for [SessionStore]'s SharedPreferences.
+     * Never hold the caller's Activity — the StalkerSession singleton
+     * outlives every screen.
+     */
+    private val appContext: android.content.Context = context.applicationContext
 
     /**
      * v2.5: [isAuthFailure] marks auth/session failures that warrant a
@@ -1750,30 +1780,13 @@ class StalkerApi(
      * hit; the UI then tells the user to wait instead of hammering.
      */
     private inner class SessionStore {
-        private val prefs = context.getSharedPreferences(
+        private val prefs = appContext.getSharedPreferences(
             "zynelabs_stb_session", android.content.Context.MODE_PRIVATE
         )
         private val pkey: String =
             "s4_" + (baseUrl + "|" + mac).hashCode().toString(16)
         private val hkey: String =
             "h4_" + (baseUrl + "|" + mac).hashCode().toString(16)
-
-        companion object {
-            /** Session TTL — restored sessions older than this are ignored. */
-            const val SESSION_TTL_MS = 12L * 3600L * 1000L
-            /** Rolling window for the handshake cap. */
-            const val CAP_WINDOW_MS = 3600L * 1000L
-            /** Max handshakes per [CAP_WINDOW_MS]. */
-            const val CAP_MAX = 3
-        }
-
-        data class SavedSession(
-            val token: String,
-            val apiBase: String,
-            val authMethod: String,
-            val flow: String,
-            val ts: Long
-        )
 
         fun save(token: String, apiBase: String, authMethod: String, flow: String) {
             prefs.edit()
