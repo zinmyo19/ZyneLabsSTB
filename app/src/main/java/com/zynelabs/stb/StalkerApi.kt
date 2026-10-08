@@ -1706,36 +1706,66 @@ class StalkerApi(
     data class VodCategory(val id: String, val title: String)
 
     /** A single VOD item (movie / episode). */
-    data class VodItem(val id: String, val name: String, val cmd: String)
+    data class VodItem(
+        val id: String,
+        val name: String,
+        val cmd: String,
+        val posterUrl: String = ""
+    )
 
-    /** Returns VOD categories. Empty list when unsupported. */
-    suspend fun getVodCategories(): List<VodCategory> = withSession {
-        val js = jsPayload(get("vod", "get_categories"))
-        val data = js.optJSONArray("data") ?: return@withSession emptyList()
-        val list = ArrayList<VodCategory>(data.length())
-        for (i in 0 until data.length()) {
-            val o = data.getJSONObject(i)
-            val title = o.optString("title").ifBlank { o.optString("name") }
-            if (title.isNotBlank()) {
-                list.add(VodCategory(id = o.optString("id"), title = title))
+    /**
+     * v4.9 fix: use [jsArray] (tolerates {"js":[...]} AND {"js":{"data":[...]}}).
+     * The old jsPayload()+optJSONArray("data") crashed on bingeiptv because
+     * its vod/get_categories returns {"js":[...]} directly —
+     * "Value [...] of type JSONArray cannot be converted to JSONObject".
+     *
+     * @param vodType "vod" for movies, "series" for TV series.
+     */
+    suspend fun getVodCategories(vodType: String = "vod"): List<VodCategory> =
+        withSession {
+            val data = jsArray(get(vodType, "get_categories"))
+                ?: return@withSession emptyList()
+            val list = ArrayList<VodCategory>(data.length())
+            for (i in 0 until data.length()) {
+                val o = data.getJSONObject(i)
+                val title = o.optString("title").ifBlank { o.optString("name") }
+                if (title.isNotBlank()) {
+                    list.add(VodCategory(id = o.optString("id"), title = title))
+                }
             }
+            list
         }
-        list
-    }
 
-    /** Returns VOD items inside a category. Empty list when unsupported. */
-    suspend fun getVodList(categoryId: String): List<VodItem> = withSession {
-        val js = jsPayload(
-            get("vod", "get_ordered_list", mapOf("category" to categoryId, "p" to "1"))
-        )
-        val data = js.optJSONArray("data") ?: return@withSession emptyList()
+    /**
+     * v4.9: same jsArray fix as [getVodCategories]; also parses poster URLs.
+     * Standard Stalker VOD items carry "screenshot_uri"; some panels use
+     * "poster", "cover" or "screenshot" — first non-blank wins.
+     */
+    suspend fun getVodList(
+        vodType: String = "vod",
+        categoryId: String
+    ): List<VodItem> = withSession {
+        val data = jsArray(
+            get(vodType, "get_ordered_list", mapOf("category" to categoryId, "p" to "1"))
+        ) ?: return@withSession emptyList()
         val list = ArrayList<VodItem>(data.length())
         for (i in 0 until data.length()) {
             val o = data.getJSONObject(i)
             val name = o.optString("name").trim()
             val cmd = o.optString("cmd").trim()
             if (name.isNotEmpty() && cmd.isNotEmpty()) {
-                list.add(VodItem(id = o.optString("id"), name = name, cmd = cmd))
+                val poster = o.optString("screenshot_uri")
+                    .ifBlank { o.optString("poster") }
+                    .ifBlank { o.optString("cover") }
+                    .ifBlank { o.optString("screenshot") }
+                list.add(
+                    VodItem(
+                        id = o.optString("id"),
+                        name = name,
+                        cmd = cmd,
+                        posterUrl = poster.trim()
+                    )
+                )
             }
         }
         list
