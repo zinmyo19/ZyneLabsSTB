@@ -249,6 +249,15 @@ class PlayerActivity : AppCompatActivity() {
         if (binding.bottomControls.isVisible) hideControls() else showControls()
     }
 
+    /**
+     * v5.6: UP on D-pad shows just the info box (channel info panel) —
+     * not the full transport. Auto-hides with the normal timer.
+     */
+    private fun showInfoBox() {
+        binding.infoBox.isVisible = true
+        bumpHideTimer()
+    }
+
     private fun bumpHideTimer() {
         uiHandler.removeCallbacks(hideRunnable)
         uiHandler.postDelayed(hideRunnable, HIDE_DELAY_MS)
@@ -277,10 +286,34 @@ class PlayerActivity : AppCompatActivity() {
                         return true
                     }
                 }
-                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
-                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                    if (!isDrawerOpen()) {
+                        toggleControls()
+                        return true
+                    }
+                    bumpHideTimer()
+                }
+                // v5.6: UP = info box (Dominic: D-pad arrows during playback).
+                KeyEvent.KEYCODE_DPAD_UP -> {
+                    if (isDrawerOpen()) return super.dispatchKeyEvent(event)
+                    if (!binding.infoBox.isVisible) {
+                        showInfoBox()
+                    } else {
+                        bumpHideTimer()
+                    }
+                    return true
+                }
+                // v5.6: LEFT/RIGHT = prev/next channel when controls hidden.
+                KeyEvent.KEYCODE_DPAD_LEFT -> {
                     if (!binding.bottomControls.isVisible && !isDrawerOpen()) {
-                        showControls()
+                        prevChannel()
+                        return true
+                    }
+                    bumpHideTimer()
+                }
+                KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    if (!binding.bottomControls.isVisible && !isDrawerOpen()) {
+                        nextChannel()
                         return true
                     }
                     bumpHideTimer()
@@ -298,13 +331,6 @@ class PlayerActivity : AppCompatActivity() {
                     val inBottom = focused != null && isDescendantOf(focused, binding.bottomControls)
                     if (!inBottom && !inPip) {
                         openDrawer("channels")
-                        return true
-                    }
-                    bumpHideTimer()
-                }
-                KeyEvent.KEYCODE_DPAD_LEFT -> {
-                    if (!binding.bottomControls.isVisible && !isDrawerOpen()) {
-                        showControls()
                         return true
                     }
                     bumpHideTimer()
