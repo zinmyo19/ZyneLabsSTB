@@ -134,6 +134,9 @@ class HomeActivity : AppCompatActivity() {
             NavEntry(R.drawable.ic_nav_series, R.string.nav_series, Section.SERIES) {
                 selectSection(Section.SERIES)
             },
+            NavEntry(R.drawable.ic_nav_categories, R.string.nav_categories, null) {
+                startActivity(Intent(this, CategoriesActivity::class.java))
+            },
             NavEntry(R.drawable.ic_nav_guide, R.string.nav_guide, null) {
                 startActivity(Intent(this, GuideActivity::class.java))
             },
