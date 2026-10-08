@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v5.5: gold PiP icon — replaces the ⧉ text glyph (renders as a solid
+     yellow box on TV boxes whose fonts lack U+29C9). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#D4AF37"
+        android:strokeWidth="2"
+        android:pathData="M4,5 h16 v14 h-16 z" />
+    <path
+        android:fillColor="#D4AF37"
+        android:pathData="M13,12.5 h6 v5 h-6 z" />
+</vector>
