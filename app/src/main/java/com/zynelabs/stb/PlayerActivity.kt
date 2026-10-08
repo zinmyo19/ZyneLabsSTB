@@ -1,14 +1,18 @@
 package com.zynelabs.stb
 
 import android.app.PictureInPictureParams
+import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Color
+import android.media.AudioManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Rational
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.SeekBar
@@ -48,9 +52,14 @@ class PlayerActivity : AppCompatActivity() {
         const val EXTRA_NAME = "name"
         const val EXTRA_CMD_TYPE = "cmd_type"
         const val EXTRA_GENRE_ID = "genre_id"
+        const val EXTRA_CHANNEL_ID = "channel_id"
         const val TYPE_ITV = "itv"
         const val TYPE_VOD = "vod"
         private const val HIDE_DELAY_MS = 4000L
+        // v5.4: gesture zones.
+        private const val GESTURE_NONE = 0
+        private const val GESTURE_VOLUME = 1
+        private const val GESTURE_BRIGHTNESS = 2
     }
 
     private lateinit var binding: ActivityPlayerBinding
@@ -70,6 +79,23 @@ class PlayerActivity : AppCompatActivity() {
     private var drawerGenreId: String? = null
     private var drawerLoadJob: Job? = null
     private var inPip = false
+
+    // v5.4: FlowPlay functions — recording, mute, zoom, favorites, prev/next.
+    private var recorder: StreamRecorder? = null
+    private var isRecording = false
+    private var muted = false
+    private var videoScale = 1.0f
+    private var currentChannel: Channel? = null
+    private var currentStreamUrl = ""
+
+    // v5.4: swipe gestures (phone only) — right side = volume (bar on LEFT),
+    // left side = brightness (bar on RIGHT). Swapped per his explicit choice.
+    private var audioManager: AudioManager? = null
+    private var gestureMode: Int = GESTURE_NONE // 0 none, 1 volume, 2 brightness
+    private var gestureStartY = 0f
+    private var gestureStartValue = 0f
+    private var gestureDragged = false
+    private val gestureHideRunnable = Runnable { hideGestureBars() }
 
     private val uiHandler = Handler(Looper.getMainLooper())
     private val hideRunnable = Runnable { hideControls() }
@@ -94,6 +120,14 @@ class PlayerActivity : AppCompatActivity() {
         isVod = intent.getStringExtra(EXTRA_CMD_TYPE) == TYPE_VOD
         currentCmdType = intent.getStringExtra(EXTRA_CMD_TYPE) ?: TYPE_ITV
         drawerGenreId = intent.getStringExtra(EXTRA_GENRE_ID)
+        // v5.4: seed currentChannel so prev/next + favorite work immediately.
+        currentChannel = Channel(
+            id = intent.getStringExtra(EXTRA_CHANNEL_ID).orEmpty().ifBlank { cmd },
+            number = "",
+            name = channelName,
+            cmd = cmd,
+            genreId = drawerGenreId.orEmpty()
+        )
 
         binding.tvTitle.text = channelName.ifBlank { getString(R.string.unknown_channel) }
         binding.tvInfoName.text = binding.tvTitle.text
@@ -104,8 +138,14 @@ class PlayerActivity : AppCompatActivity() {
         binding.btnTracks.setOnClickListener { showAudioTracks() }
         // v5.3: PiP + drawers.
         binding.btnPip.setOnClickListener { enterPip() }
+        // v5.4: record button (FlowPlay function).
+        binding.btnRecord.setOnClickListener { toggleRecording() }
         binding.btnDrawerSettings.setOnClickListener { openDrawer("settings") }
         binding.btnDrawerChannels.setOnClickListener { openDrawer("channels") }
+
+        // v5.4: swipe gestures (phone only — TV uses D-pad).
+        audioManager = getSystemService(AUDIO_SERVICE) as? AudioManager
+        setupGestures()
 
         setupDrawers()
 
@@ -151,6 +191,17 @@ class PlayerActivity : AppCompatActivity() {
 
         // OK on the surface toggles controls (standing TV scheme).
         binding.playerRoot.setOnClickListener { toggleControls() }
+
+        // v5.4: preload drawer channel list in background so prev/next
+        // works without opening the drawer first.
+        lifecycleScope.launch {
+            try {
+                val api = StalkerSession.get(this@PlayerActivity)
+                drawerChannels = api.getChannelsPaginated(genreId = drawerGenreId)
+            } catch (e: Exception) {
+                // drawer will load on open; ignore
+            }
+        }
 
         showControls()
         resolveAndPlay(cmd)
@@ -353,6 +404,7 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun switchChannel(ch: Channel) {
         closeDrawers()
+        currentChannel = ch
         channelName = ch.name
         binding.tvTitle.text = channelName.ifBlank { getString(R.string.unknown_channel) }
         binding.tvInfoName.text = binding.tvTitle.text
@@ -375,7 +427,18 @@ class PlayerActivity : AppCompatActivity() {
             RowItem("d_aspect", getString(R.string.setting_aspect), Prefs.getAspectRatio(this)),
             RowItem("d_buffer", getString(R.string.setting_buffer), Prefs.getBufferSize(this)),
             RowItem("d_sleep", getString(R.string.setting_sleep), Prefs.getSleepTimer(this)),
-            RowItem("d_pip", getString(R.string.setting_pip), "")
+            RowItem("d_pip", getString(R.string.setting_pip), ""),
+            // v5.4: FlowPlay functions.
+            RowItem("d_record", getString(R.string.setting_record),
+                getString(if (isRecording) R.string.recording_on else R.string.recording_off)),
+            RowItem("d_mute", getString(R.string.setting_mute),
+                getString(if (muted) R.string.on else R.string.off)),
+            RowItem("d_favorite", getString(R.string.setting_favorite),
+                getString(if (Prefs.isFavorite(this, currentChannel?.id.orEmpty())) R.string.on else R.string.off)),
+            RowItem("d_zoom", getString(R.string.setting_zoom), "${(videoScale * 100).toInt()}%"),
+            RowItem("d_prev", getString(R.string.setting_prev_channel), ""),
+            RowItem("d_next", getString(R.string.setting_next_channel), ""),
+            RowItem("d_external", getString(R.string.setting_external), "")
         )
         drawerSettingsAdapter.submitList(rows)
     }
@@ -419,6 +482,22 @@ class PlayerActivity : AppCompatActivity() {
                 enterPip()
                 return
             }
+            // v5.4: FlowPlay functions.
+            "d_record" -> toggleRecording()
+            "d_mute" -> toggleMute()
+            "d_favorite" -> toggleFavorite()
+            "d_zoom" -> cycleZoom()
+            "d_prev" -> {
+                closeDrawers()
+                prevChannel()
+                return
+            }
+            "d_next" -> {
+                closeDrawers()
+                nextChannel()
+                return
+            }
+            "d_external" -> openExternal()
         }
         refreshDrawerSettings()
         refreshStripLabels()
@@ -458,6 +537,279 @@ class PlayerActivity : AppCompatActivity() {
         } else {
             showControls()
         }
+    }
+
+    // ------------------------------------------------------------ v5.4 gestures
+    //
+    // Phone only (TV uses D-pad). Vertical drag on the RIGHT third of the
+    // screen = volume, bar shown on the LEFT. Vertical drag on the LEFT
+    // third = brightness, bar shown on the RIGHT. (Swapped per his choice.)
+    // Bars are gold Imperial overlays that fade after ~1.5s.
+
+    private fun setupGestures() {
+        val touchSlop = android.view.ViewConfiguration.get(this).scaledTouchSlop
+        binding.playerRoot.setOnTouchListener { _, event ->
+            if (isTvFocus()) return@setOnTouchListener false
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    val w = binding.playerRoot.width.toFloat()
+                    gestureMode = when {
+                        event.x > w * 2f / 3f -> GESTURE_VOLUME
+                        event.x < w / 3f -> GESTURE_BRIGHTNESS
+                        else -> GESTURE_NONE
+                    }
+                    gestureStartY = event.y
+                    gestureDragged = false
+                    gestureStartValue = when (gestureMode) {
+                        GESTURE_VOLUME -> currentVolume().toFloat()
+                        GESTURE_BRIGHTNESS -> currentBrightness()
+                        else -> 0f
+                    }
+                    false // let tap-through to click still work
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (gestureMode == GESTURE_NONE) return@setOnTouchListener false
+                    // Only engage after passing touch slop — a tap stays a tap.
+                    if (!gestureDragged &&
+                        kotlin.math.abs(event.y - gestureStartY) < touchSlop
+                    ) {
+                        return@setOnTouchListener false
+                    }
+                    gestureDragged = true
+                    val h = binding.playerRoot.height.toFloat().coerceAtLeast(1f)
+                    val dy = gestureStartY - event.y // up = positive
+                    val frac = (dy / h).coerceIn(-1f, 1f)
+                    when (gestureMode) {
+                        GESTURE_VOLUME -> {
+                            val am = audioManager ?: return@setOnTouchListener true
+                            val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                            val v = (gestureStartValue + frac * max)
+                                .toInt().coerceIn(0, max)
+                            am.setStreamVolume(AudioManager.STREAM_MUSIC, v, 0)
+                            showVolumeBar(v, max)
+                        }
+                        GESTURE_BRIGHTNESS -> {
+                            val v = (gestureStartValue + frac).coerceIn(0.05f, 1f)
+                            val lp = window.attributes
+                            lp.screenBrightness = v
+                            window.attributes = lp
+                            showBrightnessBar(v)
+                        }
+                    }
+                    true // consume the drag
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    val consumed = gestureDragged
+                    gestureMode = GESTURE_NONE
+                    gestureDragged = false
+                    // Schedule bar fade; a tap (no drag) falls through to click.
+                    uiHandler.removeCallbacks(gestureHideRunnable)
+                    uiHandler.postDelayed(gestureHideRunnable, 1500)
+                    consumed
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun currentVolume(): Int {
+        val am = audioManager ?: return 0
+        return am.getStreamVolume(AudioManager.STREAM_MUSIC)
+    }
+
+    private fun currentBrightness(): Float {
+        val b = window.attributes.screenBrightness
+        return if (b < 0) 0.5f else b // <0 = system default; assume mid
+    }
+
+    private fun showVolumeBar(v: Int, max: Int) {
+        binding.volumeBar.isVisible = true
+        binding.volumeProgress.max = max.coerceAtLeast(1)
+        binding.volumeProgress.progress = v
+        uiHandler.removeCallbacks(gestureHideRunnable)
+        uiHandler.postDelayed(gestureHideRunnable, 1500)
+    }
+
+    private fun showBrightnessBar(v: Float) {
+        binding.brightnessBar.isVisible = true
+        binding.brightnessProgress.progress = (v * 100).toInt()
+        uiHandler.removeCallbacks(gestureHideRunnable)
+        uiHandler.postDelayed(gestureHideRunnable, 1500)
+    }
+
+    private fun hideGestureBars() {
+        binding.volumeBar.isVisible = false
+        binding.brightnessBar.isVisible = false
+    }
+
+    // ------------------------------------------------------------ v5.4 recording
+    // Ported from FlowPlay's StreamRecorder (HLS segment stitching + raw
+    // copy), with Stalker MAG headers so gated streams record.
+
+    private fun toggleRecording() {
+        if (isRecording) {
+            stopRecording()
+            return
+        }
+        val url = currentStreamUrl
+        if (url.isBlank()) {
+            Toast.makeText(this, getString(R.string.record_no_stream), Toast.LENGTH_SHORT).show()
+            return
+        }
+        lifecycleScope.launch {
+            try {
+                val api = StalkerSession.get(this@PlayerActivity)
+                val headers = api.streamHeaders()
+                val rec = StreamRecorder()
+                rec.setExtraHeaders(headers)
+                val name = StreamRecorder.fileNameFor(channelName.ifBlank { "channel" })
+                rec.start(this@PlayerActivity, url, name, object : StreamRecorder.Listener {
+                    override fun onStarted(f: String) {
+                        runOnUiThread {
+                            isRecording = true
+                            updateRecordButton()
+                            Toast.makeText(
+                                this@PlayerActivity,
+                                getString(R.string.record_started, f),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                    override fun onStopped(f: String, bytes: Long) {
+                        runOnUiThread {
+                            isRecording = false
+                            updateRecordButton()
+                            Toast.makeText(
+                                this@PlayerActivity,
+                                getString(R.string.record_saved, f),
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                    override fun onError(msg: String) {
+                        runOnUiThread {
+                            isRecording = false
+                            updateRecordButton()
+                            Toast.makeText(
+                                this@PlayerActivity,
+                                getString(R.string.record_failed, msg),
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                })
+                recorder = rec
+            } catch (e: Exception) {
+                Toast.makeText(
+                    this@PlayerActivity,
+                    getString(R.string.record_failed, e.message.orEmpty()),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    private fun stopRecording() {
+        try {
+            recorder?.stop()
+        } catch (e: Exception) {
+            // ignore
+        }
+        recorder = null
+        isRecording = false
+        updateRecordButton()
+    }
+
+    private fun updateRecordButton() {
+        // Red dot pulses while recording; gold otherwise.
+        binding.btnRecord.textColor =
+            if (isRecording) Color.RED else getColor(R.color.gold)
+    }
+
+    // ------------------------------------------------------------ v5.4 FlowPlay extras
+
+    /** Quick mute toggle (FlowPlay). */
+    private fun toggleMute() {
+        muted = !muted
+        try {
+            player?.volume = if (muted) 0f else 1f
+        } catch (e: Exception) {
+            // ignore
+        }
+        Toast.makeText(
+            this,
+            getString(if (muted) R.string.muted else R.string.unmuted),
+            Toast.LENGTH_SHORT
+        ).show()
+        bumpHideTimer()
+    }
+
+    /** Hand the stream URL to another video app (FlowPlay). */
+    private fun openExternal() {
+        val url = currentStreamUrl
+        if (url.isBlank()) {
+            Toast.makeText(this, getString(R.string.record_no_stream), Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            val mime = if (url.lowercase().contains(".m3u8")) "application/x-mpegURL"
+            else "video/*"
+            val i = Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(url), mime)
+            startActivity(Intent.createChooser(i, getString(R.string.open_with)))
+        } catch (e: Exception) {
+            Toast.makeText(this, getString(R.string.no_app_for_stream), Toast.LENGTH_SHORT).show()
+        }
+        bumpHideTimer()
+    }
+
+    /** Previous channel in the drawer list (FlowPlay). */
+    private fun prevChannel() {
+        stepChannel(-1)
+    }
+
+    /** Next channel in the drawer list (FlowPlay). */
+    private fun nextChannel() {
+        stepChannel(1)
+    }
+
+    private fun stepChannel(dir: Int) {
+        if (drawerChannels.isEmpty()) return
+        val cur = currentChannel
+        val idx = drawerChannels.indexOfFirst { it.id == cur?.id }
+            .takeIf { it >= 0 } ?: 0
+        val next = drawerChannels[
+            (idx + dir + drawerChannels.size) % drawerChannels.size
+        ]
+        switchChannel(next)
+    }
+
+    /** Favorite toggle (FlowPlay). */
+    private fun toggleFavorite() {
+        val ch = currentChannel ?: return
+        val nowFav = Prefs.toggleFavorite(this, ch.id)
+        Toast.makeText(
+            this,
+            getString(if (nowFav) R.string.fav_added else R.string.fav_removed, ch.name),
+            Toast.LENGTH_SHORT
+        ).show()
+        bumpHideTimer()
+    }
+
+    /** Video zoom/scale (FlowPlay's setVideoScale). Cycles 100% → 125% → 150% → 100%. */
+    private fun cycleZoom() {
+        videoScale = when {
+            videoScale < 1.1f -> 1.25f
+            videoScale < 1.4f -> 1.5f
+            else -> 1.0f
+        }
+        binding.playerView.scaleX = videoScale
+        binding.playerView.scaleY = videoScale
+        Toast.makeText(
+            this,
+            getString(R.string.zoom_level, (videoScale * 100).toInt()),
+            Toast.LENGTH_SHORT
+        ).show()
+        bumpHideTimer()
     }
 
     // ------------------------------------------------------------ transport
@@ -561,6 +913,7 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun initPlayer(url: String) {
         releasePlayer()
+        currentStreamUrl = url
 
         val (minBufferMs, maxBufferMs) = Prefs.bufferDurationsMs(this)
         val loadControl = DefaultLoadControl.Builder()
@@ -650,8 +1003,17 @@ class PlayerActivity : AppCompatActivity() {
     private fun releasePlayer() {
         uiHandler.removeCallbacks(hideRunnable)
         uiHandler.removeCallbacks(progressRunnable)
+        uiHandler.removeCallbacks(gestureHideRunnable)
         sleepJob?.cancel()
         sleepJob = null
+        // v5.4: stop any active recording.
+        try {
+            recorder?.stop()
+        } catch (e: Exception) {
+            // ignore
+        }
+        recorder = null
+        isRecording = false
         binding.playerView.player = null
         player?.release()
         player = null
