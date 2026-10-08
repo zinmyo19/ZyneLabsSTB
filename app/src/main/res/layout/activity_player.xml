@@ -46,9 +46,16 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="12dp"
+            android:layout_marginEnd="8dp"
             android:layout_weight="1"
             android:ellipsize="end"
             android:maxLines="1"
+            android:scrollHorizontally="true"
+            android:shadowColor="#CC000000"
+            android:shadowDx="1"
+            android:shadowDy="1"
+            android:shadowRadius="3"
+            android:singleLine="true"
             android:textColor="@color/text_primary"
             android:textSize="17sp"
             android:textStyle="bold" />
@@ -79,49 +86,45 @@
             android:textColor="@color/gold"
             android:textSize="13sp" />
 
-        <Button
+        <ImageButton
             android:id="@+id/btnPip"
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:layout_marginStart="8dp"
             android:background="@drawable/nav_item_selector"
+            android:contentDescription="@string/pip_button"
             android:focusable="true"
-            android:text="⧉"
-            android:textColor="@color/gold"
-            android:textSize="20sp" />
+            android:src="@drawable/ic_pip" />
 
-        <Button
+        <ImageButton
             android:id="@+id/btnRecord"
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:layout_marginStart="8dp"
             android:background="@drawable/nav_item_selector"
+            android:contentDescription="@string/record_button"
             android:focusable="true"
-            android:text="●"
-            android:textColor="@color/gold"
-            android:textSize="20sp" />
+            android:src="@drawable/ic_record" />
 
-        <Button
+        <ImageButton
             android:id="@+id/btnDrawerSettings"
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:layout_marginStart="8dp"
             android:background="@drawable/nav_item_selector"
+            android:contentDescription="@string/settings_button"
             android:focusable="true"
-            android:text="⚙"
-            android:textColor="@color/gold"
-            android:textSize="20sp" />
+            android:src="@drawable/ic_nav_settings" />
 
-        <Button
+        <ImageButton
             android:id="@+id/btnDrawerChannels"
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:layout_marginStart="8dp"
             android:background="@drawable/nav_item_selector"
+            android:contentDescription="@string/channels_button"
             android:focusable="true"
-            android:text="☰"
-            android:textColor="@color/gold"
-            android:textSize="20sp" />
+            android:src="@drawable/ic_menu" />
     </LinearLayout>
 
     <!-- ===== Info box (with controls) ===== -->
@@ -130,7 +133,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|start"
-        android:layout_marginTop="76dp"
+        android:layout_marginTop="88dp"
         android:layout_marginStart="16dp"
         android:background="@drawable/info_box_background"
         android:orientation="vertical"
