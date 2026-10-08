@@ -1,38 +1,200 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- v5.1: FlowPlay-style player — custom controller (PlayerView controller OFF):
+     transparent floating top bar, info box, bottom transport with seek bar,
+     inline settings strip. Fully D-pad navigable, auto-hides. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/playerRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@android:color/black">
+    android:background="@android:color/black"
+    android:clickable="true"
+    android:focusable="true">
 
     <androidx.media3.ui.PlayerView
         android:id="@+id/playerView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:focusable="false"
+        android:focusableInTouchMode="false"
         app:show_buffering="when_playing"
-        app:use_controller="true" />
+        app:use_controller="false" />
 
-    <TextView
-        android:id="@+id/tvTitle"
+    <!-- ===== Top bar (transparent, floating) ===== -->
+    <LinearLayout
+        android:id="@+id/topBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:background="#80000000"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="12dp">
+
+        <Button
+            android:id="@+id/btnBack"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@drawable/nav_item_selector"
+            android:focusable="true"
+            android:text="‹"
+            android:textColor="@color/text_primary"
+            android:textSize="28sp" />
+
+        <TextView
+            android:id="@+id/tvTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/text_primary"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/badge_live"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
+            android:text="● LIVE"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnTracks"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:background="@drawable/nav_item_selector"
+            android:focusable="true"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:text="@string/tracks_button"
+            android:textColor="@color/teal"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <!-- ===== Info box (with controls) ===== -->
+    <LinearLayout
+        android:id="@+id/infoBox"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|start"
-        android:layout_margin="16dp"
-        android:textColor="@color/text_primary"
-        android:textSize="16sp"
-        android:textStyle="bold" />
+        android:layout_marginTop="76dp"
+        android:layout_marginStart="16dp"
+        android:background="#A0000000"
+        android:orientation="vertical"
+        android:padding="14dp">
 
-    <!-- v5.0: audio track selection (Auto + available tracks) -->
-    <Button
-        android:id="@+id/btnTracks"
-        android:layout_width="wrap_content"
+        <TextView
+            android:id="@+id/tvInfoName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/text_primary"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvInfoMeta"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textColor="@color/teal"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- ===== Bottom: settings strip + transport ===== -->
+    <LinearLayout
+        android:id="@+id/bottomControls"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="top|end"
-        android:layout_margin="8dp"
-        android:alpha="0.85"
-        android:focusable="true"
-        android:text="@string/tracks_button"
-        android:textSize="12sp" />
+        android:layout_gravity="bottom"
+        android:background="#B3000000"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <!-- Inline settings strip -->
+        <LinearLayout
+            android:id="@+id/settingsStrip"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnSpeed"
+                style="@style/PlayerChipButton"
+                android:text="1x" />
+
+            <Button
+                android:id="@+id/btnAudio"
+                style="@style/PlayerChipButton"
+                android:text="Audio" />
+
+            <Button
+                android:id="@+id/btnSubtitles"
+                style="@style/PlayerChipButton"
+                android:text="Subs" />
+
+            <Button
+                android:id="@+id/btnAspect"
+                style="@style/PlayerChipButton"
+                android:text="16:9" />
+        </LinearLayout>
+
+        <!-- Transport -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnPlayPause"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:background="@drawable/nav_item_selector"
+                android:focusable="true"
+                android:text="⏸"
+                android:textColor="@color/text_primary"
+                android:textSize="22sp" />
+
+            <TextView
+                android:id="@+id/tvPosition"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:text="00:00"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp" />
+
+            <SeekBar
+                android:id="@+id/seekBar"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:focusable="true"
+                android:max="1000"
+                android:progressTint="@color/teal"
+                android:thumbTint="@color/teal" />
+
+            <TextView
+                android:id="@+id/tvDuration"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="LIVE"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+        </LinearLayout>
+    </LinearLayout>
 
     <ProgressBar
         android:id="@+id/progressBar"
