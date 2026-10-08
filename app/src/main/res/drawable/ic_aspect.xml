@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v5.5: gold aspect/fit icon (fullscreen corners). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#D4AF37"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:pathData="M4,9 V4 h5 M15,4 h5 v5 M20,15 v5 h-5 M9,20 H4 v-5" />
+</vector>
