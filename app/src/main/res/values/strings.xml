@@ -56,6 +56,17 @@
     <string name="setting_audio_lang">Audio language</string>
     <string name="setting_portal">Portal settings</string>
     <string name="setting_version">Version</string>
+
+    <!-- v5.0 player settings -->
+    <string name="section_player">Player</string>
+    <string name="setting_speed">Playback speed</string>
+    <string name="setting_subtitle_size">Subtitle size</string>
+    <string name="setting_subtitle_color">Subtitle color</string>
+    <string name="setting_buffer">Buffer size</string>
+    <string name="setting_sleep">Sleep timer</string>
+    <string name="tracks_button">Tracks</string>
+    <string name="tracks_audio_title">Audio track</string>
+    <string name="sleep_timer_done">Sleep timer: playback stopped</string>
     <string name="on">On</string>
     <string name="off">Off</string>
 
