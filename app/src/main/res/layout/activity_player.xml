@@ -203,15 +203,35 @@
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <Button
+            <!-- v5.5: prev / play-pause / next (gold vectors, D-pad focusable) -->
+            <ImageButton
+                android:id="@+id/btnPrev"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:layout_marginEnd="4dp"
+                android:background="@drawable/nav_item_selector"
+                android:contentDescription="@string/prev_channel"
+                android:focusable="true"
+                android:src="@drawable/ic_prev" />
+
+            <ImageButton
                 android:id="@+id/btnPlayPause"
                 android:layout_width="52dp"
                 android:layout_height="52dp"
                 android:background="@drawable/nav_item_selector"
+                android:contentDescription="@string/play_pause"
                 android:focusable="true"
-                android:text="⏸"
-                android:textColor="@color/text_primary"
-                android:textSize="22sp" />
+                android:src="@drawable/ic_pause" />
+
+            <ImageButton
+                android:id="@+id/btnNext"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:layout_marginStart="4dp"
+                android:background="@drawable/nav_item_selector"
+                android:contentDescription="@string/next_channel"
+                android:focusable="true"
+                android:src="@drawable/ic_next" />
 
             <TextView
                 android:id="@+id/tvPosition"
