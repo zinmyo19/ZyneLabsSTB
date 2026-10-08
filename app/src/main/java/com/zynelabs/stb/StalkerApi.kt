@@ -118,6 +118,24 @@ import kotlinx.coroutines.delay
  * shape with HTTP 200 + empty body. buildUrl() now emits the OTT shape for
  * ALL get_ordered_list calls (validation probe, paginated loading, vod).
  * Other actions (handshake, create_link, get_epg, ...) are unchanged.
+ *
+ * v4.6: SESSION PERSISTENCE — one handshake, keep it alive. v4.5's field
+ * test on bingeiptv.xyz was the breakthrough AND the wound: the channel
+ * list APPEARED (first time ever), then play failed and the list vanished
+ * — debug showed Handshakes: 14. The portal gave us a working session and
+ * WE killed it with handshake spam (14 rapid handshakes = abuse → session
+ * invalidated). OTT does ONE handshake and stays connected for hours.
+ * Now: the working session (token + apiBase + authMethod + flow) is cached
+ * in memory AND in SharedPreferences (12h TTL) and reused for EVERYTHING
+ * (listing, pagination, create_link, EPG) — never re-handshaking between
+ * listing and playing. Re-handshake happens ONLY on explicit auth failure
+ * (ONE attempt, then back off). HARD CAP: max 3 handshakes/hour per
+ * portal+MAC — beyond that the app says "Too many connection attempts —
+ * wait a while" instead of hammering. The aggressive ladders are gone:
+ * Retry reuses the cached session first; fresh auth (dual-flow, first-auth
+ * only) runs only when the cached session is proven dead AND under cap.
+ * Copy Debug Info shows "Session: cached (prefs) / reused (memory) /
+ * fresh ..." and "Handshakes this hour: N".
  */
 class StalkerApi(
     portalUrl: String,
@@ -279,6 +297,16 @@ class StalkerApi(
         private set
 
     /**
+     * v4.6: where the current session came from — "none" (no session yet),
+     * "cached (prefs)" (restored from SharedPreferences), "reused (memory)"
+     * (in-memory token from earlier in this process), "fresh (full auth)"
+     * (dual-flow first auth), "fresh (re-handshake)" (single recovery
+     * handshake after a dead cached session). Shown in Copy Debug Info.
+     */
+    @Volatile var debugSessionSource: String = "none"
+        private set
+
+    /**
      * v4.5: which auth flow the last [getProfile] used. "A" = v2.4's proven
      * {portal}/portal.php + stb/get_profile (tried FIRST); "B" = v4.x
      * {host}/server/load.php + get_ordered_list ladder (fallback). Shown
@@ -383,6 +411,9 @@ class StalkerApi(
         sb.appendLine("Auth method: $authMethod")
         sb.appendLine("Flow: $debugFlow")
         sb.appendLine("Handshakes: $debugHandshakeCount")
+        // v4.6: session persistence diagnostics.
+        sb.appendLine("Session: $debugSessionSource")
+        sb.appendLine("Handshakes this hour: ${sessionStore.handshakesThisHour()}")
         sb.appendLine()
         sb.appendLine("Handshake URL:")
         sb.appendLine(debugHandshakeUrl ?: "(none yet)")
@@ -419,6 +450,14 @@ class StalkerApi(
     private val handshakeMutex = Mutex()
 
     private val cookieJar = MemoryCookieJar()
+
+    /**
+     * v4.6: persistent session cache + handshake rate-limiting (see
+     * [SessionStore]). The working session survives process death so the
+     * app reuses OTT-style long-lived sessions instead of handshaking on
+     * every launch.
+     */
+    private val sessionStore = SessionStore()
 
     private val client: OkHttpClient = OkHttpClient.Builder()
         .cookieJar(cookieJar)
@@ -669,9 +708,11 @@ class StalkerApi(
         try {
             // v2.7: serialize — the probe must not invalidate the app's
             // session token with a concurrent handshake.
+            // v4.6: restore the persisted session first — zero handshakes
+            // when a valid token exists from the last run.
             if (token.isNullOrBlank()) {
                 handshakeMutex.withLock {
-                    if (token.isNullOrBlank()) handshake()
+                    if (token.isNullOrBlank() && !restoreSession()) handshake()
                 }
             }
             val url = apiBase.toHttpUrlOrNull()?.newBuilder()
@@ -736,9 +777,10 @@ class StalkerApi(
     ): ProbeResult = withContext(Dispatchers.IO) {
         try {
             // v2.7: serialize (see probe()).
+            // v4.6: restore the persisted session first (see probe()).
             if (token.isNullOrBlank()) {
                 handshakeMutex.withLock {
-                    if (token.isNullOrBlank()) handshake()
+                    if (token.isNullOrBlank() && !restoreSession()) handshake()
                 }
             }
             val form = okhttp3.FormBody.Builder()
@@ -783,9 +825,22 @@ class StalkerApi(
      * single-element list ({portal}/portal.php) to pin the v2.4 endpoint.
      */
     private suspend fun handshakeOn(candidates: List<String>): String {
+        // v4.6: HARD CAP — max 3 handshakes/hour per portal+MAC. The v4.5
+        // field test hit Handshakes: 14 and the portal invalidated our
+        // working session as abuse. checkCap() throws a NON-auth-failure
+        // StalkerException so recovery ladders don't catch it — the UI
+        // tells the user to wait instead of hammering.
+        sessionStore.checkCap()
+        // v4.6: keep the old token — if THIS handshake fails (network
+        // blip), the caller retries with the previous session instead of
+        // starting from nothing (restored in the catch below).
+        val prevToken = token
         token = null
         // v4.2: count every handshake attempt (see debugHandshakeCount).
         debugHandshakeCount++
+        // v4.6: record BEFORE attempting — even a failed handshake hits the
+        // portal and must count against the cap.
+        sessionStore.recordHandshake()
         // v4.1: reset the per-session validation capture (first
         // itv/get_ordered_list — see [get]). The StalkerSession singleton
         // reuses this instance across connects, and the auth ladder
@@ -810,9 +865,10 @@ class StalkerApi(
         // rethrows immediately. apiBase keeps the working endpoint for all
         // subsequent calls.
         var lastError: StalkerException? = null
-        for (candidate in candidates) {
-            apiBase = candidate
-            try {
+        try {
+            for (candidate in candidates) {
+                apiBase = candidate
+                try {
                 debugHandshakeUrl =
                     buildUrl("stb", "handshake", mapOf("token" to "")).toString()
                 debugHandshakeHeaders = debugHeaderDump()
@@ -845,6 +901,12 @@ class StalkerApi(
                 // portal set a session cookie (cookie hypothesis).
                 android.util.Log.i("StalkerApi", "handshake: jar={${cookieJar.dump()}}")
                 syncTokenCookie() // TOKEN_COOKIE: publish the fresh token
+                // v4.6: persist the working session immediately — the token
+                // is reused for everything from now on (no re-handshake
+                // between listing and playing). The auth method may be
+                // refined by the ladder afterwards; persistSession() is
+                // called again whenever it settles.
+                persistSession()
                 return newToken
             } catch (e: StalkerException) {
                 val msg = e.message.orEmpty()
@@ -862,6 +924,20 @@ class StalkerApi(
             }
         }
         throw lastError ?: StalkerException("Handshake failed on all API bases")
+        } catch (e: Exception) {
+            // v4.6: don't destroy a possibly-good token when THIS handshake
+            // fails (network blip, all bases 404) — restore the previous
+            // token so the caller retries with the old session instead of
+            // starting from nothing.
+            if (token.isNullOrBlank() && !prevToken.isNullOrBlank()) {
+                token = prevToken
+                android.util.Log.w(
+                    "StalkerApi",
+                    "handshakeOn: failed, restored previous token"
+                )
+            }
+            throw e
+        }
     }
 
     /**
@@ -1004,16 +1080,19 @@ class StalkerApi(
      */
     private suspend fun <T> withSession(block: suspend () -> T): T {
         if (token.isNullOrBlank()) {
-            // v2.7: serialize even the first handshake — several activities
-            // starting at once must not handshake concurrently.
+            // v2.7: serialize even the restore+first-handshake — several
+            // activities starting at once must not handshake concurrently.
+            // v4.6: restore the persisted session FIRST — a valid token
+            // from the last run means zero handshakes this launch.
             handshakeMutex.withLock {
-                if (token.isNullOrBlank()) handshake()
+                if (token.isNullOrBlank() && !restoreSession()) {
+                    handshake() // cap-checked inside handshakeOn
+                }
             }
         }
         // v3.0: up to 3 self-heal retries (not just 1) for network errors.
         val maxRetries = 3
         var attempt = 0
-        var firstWasAuthFailure = false
         while (true) {
             try {
                 return block()
@@ -1032,20 +1111,20 @@ class StalkerApi(
                 delay(backoffMs(attempt))
             } catch (e: StalkerException) {
                 if (!isAuthFailure(e)) throw e
-                if (attempt == 0) firstWasAuthFailure = true
-                // v4.2: single-handshake ladder. OTT does ONE handshake and
-                // reuses the token for everything; v4.1's rapid-fire
-                // handshakes (up to 7 per connect) likely triggered portal
-                // rate-limiting (HTTP 200 + empty body for every call).
-                // Round 1: try the remaining auth methods with the CURRENT
-                // token — no new handshake. Round 2: ONE fresh handshake,
-                // then all 4 methods with the new token. Max 2 handshakes
-                // per connect attempt.
+                // v4.6: recovery is now CHEAP. The v4.5 field test proved
+                // handshake spam kills our own session (14 handshakes →
+                // portal invalidated it). Round 1: remaining auth methods
+                // with the CURRENT token — 0 handshakes. Then ONE
+                // re-handshake (cap-checked: max 3/hour) and a SINGLE
+                // retry with the previously-working method. No second
+                // ladder — the method worked before, only the token was
+                // stale.
+                val origMethod = authMethod
                 val methods = AuthMethod.values()
-                var methodIndex = methods.indexOf(authMethod).coerceAtLeast(0)
+                var methodIndex = methods.indexOf(origMethod).coerceAtLeast(0)
                 android.util.Log.w(
                     "StalkerApi",
-                    "withSession: auth failure, ladder round 1 (same token) " +
+                    "withSession: auth failure, cheap round (same token) " +
                         "from ${methods[methodIndex]}, " +
                         "order=${methods.joinToString("→")}"
                 )
@@ -1063,47 +1142,42 @@ class StalkerApi(
                         foundWorking = true
                     }
                 }
-                if (!foundWorking) {
-                    // Round 2: one fresh handshake (the first token may
-                    // have been stale), then all 4 methods with it.
-                    android.util.Log.w(
-                        "StalkerApi",
-                        "withSession: round 1 failed, one fresh handshake " +
-                            "then ladder round 2 (all 4 methods)"
-                    )
-                    // v3.0: FORCE — the stored token may be dead
-                    // server-side even though it looks current locally
-                    // (probe/app session conflict). The mutex keeps
-                    // concurrent handshakes serialized (v2.7).
-                    handshakeIfStale(null, force = true)
-                    methodIndex = -1
-                    while (methodIndex < methods.size - 1 && !foundWorking) {
-                        methodIndex++
-                        val next = methods[methodIndex]
-                        android.util.Log.w(
-                            "StalkerApi",
-                            "withSession: round 2 trying $next"
-                        )
-                        if (tryAuthMethodWithToken(next)) {
-                            authMethod = next
-                            foundWorking = true
-                        }
-                    }
-                }
                 if (foundWorking) {
-                    // New method works — retry the call with it.
+                    // New method works — persist it and retry the call.
+                    persistSession()
                     attempt = 0
-                    firstWasAuthFailure = false
                     continue
                 }
-                // Both rounds failed (max 2 handshakes): the token isn't
-                // the problem — the MAC itself isn't registered.
-                // (Preserves the v2.5/v2.7 "MAC not registered" detection,
-                // now a true last resort.)
-                if (firstWasAuthFailure) {
+                // Methods exhausted with this token — restore the
+                // previously-working method (the ladder leaves authMethod
+                // on MAC_ONLY; retrying with that after a fresh handshake
+                // would fail even though BEARER+new token works).
+                authMethod = origMethod
+                syncTokenCookie()
+                // v4.6: ONE re-handshake, then ONE retry. handshakeIfStale
+                // enforces the hourly cap (throws "Too many connection
+                // attempts" — not an auth failure, so no further ladder).
+                // v3.0: FORCE — the stored token may be dead server-side
+                // even though it looks current locally. Mutex keeps
+                // concurrent handshakes serialized (v2.7).
+                android.util.Log.w(
+                    "StalkerApi",
+                    "withSession: methods exhausted, one re-handshake " +
+                        "(cap-checked) then single retry with $origMethod"
+                )
+                handshakeIfStale(null, force = true)
+                debugSessionSource = "fresh (re-handshake)"
+                persistSession()
+                try {
+                    return block()
+                } catch (e2: StalkerException) {
+                    if (!isAuthFailure(e2)) throw e2
+                    // Token AND method both fail after a fresh handshake:
+                    // the MAC itself isn't registered. Back off — no more
+                    // ladders, no more handshakes (v4.5's 14-handshake
+                    // self-kill must never recur).
                     throw StalkerException("MAC not registered on this portal")
                 }
-                throw e
             }
         }
     }
@@ -1124,32 +1198,31 @@ class StalkerApi(
      */
     private suspend fun tryFlowA(): JSONObject? {
         val portalPhp = "$baseUrl/portal.php"
-        repeat(2) { attempt ->
-            try {
-                // v2.4 style: Bearer only — no auth-method ladder here.
-                authMethod = AuthMethod.BEARER
-                handshakeMutex.withLock { handshakeOn(listOf(portalPhp)) }
-                val js = jsPayload(get("stb", "get_profile"))
-                val id = js.optString("id")
-                if (id.isNotBlank()) {
-                    android.util.Log.i(
-                        "StalkerApi",
-                        "tryFlowA: portal.php + get_profile OK, " +
-                            "id=${id.take(16)} (attempt ${attempt + 1}/2)"
-                    )
-                    return js
-                }
-                android.util.Log.w(
+        // v4.6: SINGLE attempt (was repeat(2)). Handshake budget is precious
+        // now — max 3/hour — and v2.4 proved one handshake suffices. A
+        // network blip here just falls through to Flow B, which has its own
+        // retries.
+        try {
+            // v2.4 style: Bearer only — no auth-method ladder here.
+            authMethod = AuthMethod.BEARER
+            handshakeMutex.withLock { handshakeOn(listOf(portalPhp)) }
+            val js = jsPayload(get("stb", "get_profile"))
+            val id = js.optString("id")
+            if (id.isNotBlank()) {
+                android.util.Log.i(
                     "StalkerApi",
-                    "tryFlowA: get_profile blank id (attempt ${attempt + 1}/2)"
+                    "tryFlowA: portal.php + get_profile OK, " +
+                        "id=${id.take(16)}"
                 )
-            } catch (e: Exception) {
-                android.util.Log.w(
-                    "StalkerApi",
-                    "tryFlowA: attempt ${attempt + 1}/2 failed: " +
-                        "${(e.message ?: e.javaClass.simpleName).take(80)}"
-                )
+                return js
             }
+            android.util.Log.w("StalkerApi", "tryFlowA: get_profile blank id")
+        } catch (e: Exception) {
+            android.util.Log.w(
+                "StalkerApi",
+                "tryFlowA: failed: " +
+                    "${(e.message ?: e.javaClass.simpleName).take(80)}"
+            )
         }
         android.util.Log.w("StalkerApi", "tryFlowA: no profile, falling back to Flow B")
         return null
@@ -1177,9 +1250,100 @@ class StalkerApi(
      * working for callers.
      */
     suspend fun getProfile(): JSONObject {
+        // v4.6: FAST PATH — reuse the cached session (memory or prefs) and
+        // validate it with ONE call. No handshake when we already have a
+        // token: this is what keeps the portal from killing our session.
+        if (token.isNullOrBlank()) {
+            if (restoreSession()) {
+                android.util.Log.i(
+                    "StalkerApi", "getProfile: using persisted session, validating"
+                )
+            }
+        }
+        if (!token.isNullOrBlank()) {
+            // v4.6: label the session source for Copy Debug Info —
+            // restoreSession() already set "cached (prefs)" when it ran.
+            if (debugSessionSource != "cached (prefs)") {
+                debugSessionSource = "reused (memory)"
+            }
+            try {
+                return validateSessionOnce().also { persistSession() }
+            } catch (e: IOException) {
+                // Network blip during validation — don't burn handshakes;
+                // let the caller surface/retry it.
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w(
+                    "StalkerApi",
+                    "getProfile: cached session failed " +
+                        "(${(e.message ?: e.javaClass.simpleName).take(60)}), " +
+                        "full auth"
+                )
+                // Stale persisted session — drop it so fullAuth starts clean
+                // (and a later restore doesn't resurrect the dead token).
+                sessionStore.clear()
+                token = null
+                lastHandshakeToken = null
+            }
+        }
+        return fullAuth()
+    }
+
+    /**
+     * v4.6: validates the CURRENT (cached) session with a single call —
+     * no handshake, no ladder. Uses whichever flow the session belongs to:
+     * Flow A → stb/get_profile (real profile), Flow B →
+     * itv/get_ordered_list page 1 (synthetic profile on channel data).
+     * Throws on any failure; the caller decides recovery.
+     */
+    private suspend fun validateSessionOnce(): JSONObject {
+        return if (debugFlow == "A") {
+            val js = jsPayload(get("stb", "get_profile"))
+            val id = js.optString("id")
+            if (id.isBlank()) {
+                throw StalkerException(
+                    "Portal returned no profile id", isAuthFailure = true
+                )
+            }
+            android.util.Log.i(
+                "StalkerApi",
+                "validateSessionOnce: Flow A session valid, id=${id.take(16)}"
+            )
+            js
+        } else {
+            debugFlow = "B"
+            val js = jsPayload(get("itv", "get_ordered_list", mapOf("p" to "1")))
+            val data = js.optJSONArray("data")
+            if (data == null || data.length() == 0) {
+                throw StalkerException(
+                    "Portal returned no channel data", isAuthFailure = true
+                )
+            }
+            android.util.Log.i(
+                "StalkerApi",
+                "validateSessionOnce: Flow B session valid, " +
+                    "channel page 1 has ${data.length()} items"
+            )
+            JSONObject().put("id", mac).put("mac", mac)
+        }
+    }
+
+    /**
+     * v4.6: full dual-flow auth — FIRST-AUTH ONLY (or when the cached
+     * session is proven dead). Flow A: v2.4's proven {portal}/portal.php +
+     * stb/get_profile + Bearer (1 handshake). Flow B (fallback): v4.4's
+     * {host}/server/load.php + get_ordered_list ladder (≤2 handshakes via
+     * withSession). Total ≤3 handshakes = the hourly cap. "MAC not
+     * registered" fires only when BOTH flows fail.
+     */
+    private suspend fun fullAuth(): JSONObject {
+        debugSessionSource = "fresh (full auth)"
         // Flow A first — v2.4's proven portal.php + get_profile.
         debugFlow = "A"
-        tryFlowA()?.let { return it }
+        tryFlowA()?.let {
+            persistSession()
+            return it
+        }
         // Flow A yielded nothing — reset session state for Flow B.
         // (tryFlowA leaves apiBase pinned to portal.php and possibly a
         // dead token; Flow B must start clean.)
@@ -1193,9 +1357,9 @@ class StalkerApi(
             val data = js.optJSONArray("data")
             // v2.5: no channel data means the portal doesn't associate this
             // session with a user — the token is dead OR the MAC isn't
-            // registered. Throw the marker so withSession re-handshakes and
-            // retries (then walks the auth-method ladder) before concluding
-            // the MAC is unregistered.
+            // registered. Throw the marker so withSession recovers (cheap
+            // method round → one re-handshake) before concluding the MAC
+            // is unregistered.
             if (data == null || data.length() == 0) {
                 throw StalkerException(
                     "Portal returned no channel data",
@@ -1210,6 +1374,7 @@ class StalkerApi(
             // (returns empty on some panels), but channel data proves the MAC
             // is registered. Callers (MainActivity connect flow) check
             // isMacRegistered(), which passes on this non-blank id.
+            persistSession()
             JSONObject().put("id", mac).put("mac", mac)
         }
     }
@@ -1565,6 +1730,147 @@ class StalkerApi(
             store.joinToString("; ") {
                 "${it.name}=${it.value.take(12)}${if (it.value.length > 12) "…" else ""}"
             }
+    }
+
+    // ------------------------------------------------------- session store
+
+    /**
+     * v4.6: persistent session cache + handshake rate limiter.
+     *
+     * The portal kills sessions when it sees handshake spam (v4.5 field
+     * test: 14 handshakes → working session invalidated). OTT does ONE
+     * handshake and reuses the token for hours — we now do the same:
+     * the working session (token + apiBase + authMethod + flow) is saved
+     * to SharedPreferences (12h TTL) and restored on the next launch
+     * instead of handshaking again.
+     *
+     * Handshake timestamps are also persisted: HARD CAP of 3 handshakes
+     * per rolling hour per portal+MAC. [checkCap] throws (NOT an auth
+     * failure — it must not trigger recovery ladders) when the cap is
+     * hit; the UI then tells the user to wait instead of hammering.
+     */
+    private inner class SessionStore {
+        private val prefs = context.getSharedPreferences(
+            "zynelabs_stb_session", android.content.Context.MODE_PRIVATE
+        )
+        private val pkey: String =
+            "s4_" + (baseUrl + "|" + mac).hashCode().toString(16)
+        private val hkey: String =
+            "h4_" + (baseUrl + "|" + mac).hashCode().toString(16)
+
+        companion object {
+            /** Session TTL — restored sessions older than this are ignored. */
+            const val SESSION_TTL_MS = 12L * 3600L * 1000L
+            /** Rolling window for the handshake cap. */
+            const val CAP_WINDOW_MS = 3600L * 1000L
+            /** Max handshakes per [CAP_WINDOW_MS]. */
+            const val CAP_MAX = 3
+        }
+
+        data class SavedSession(
+            val token: String,
+            val apiBase: String,
+            val authMethod: String,
+            val flow: String,
+            val ts: Long
+        )
+
+        fun save(token: String, apiBase: String, authMethod: String, flow: String) {
+            prefs.edit()
+                .putString(pkey + "_t", token)
+                .putString(pkey + "_b", apiBase)
+                .putString(pkey + "_m", authMethod)
+                .putString(pkey + "_f", flow)
+                .putLong(pkey + "_ts", System.currentTimeMillis())
+                .apply()
+        }
+
+        fun load(): SavedSession? {
+            val ts = prefs.getLong(pkey + "_ts", 0L)
+            if (ts == 0L) return null
+            if (System.currentTimeMillis() - ts > SESSION_TTL_MS) {
+                clear()
+                return null
+            }
+            val token = prefs.getString(pkey + "_t", "").orEmpty()
+            if (token.isBlank()) return null
+            return SavedSession(
+                token = token,
+                apiBase = prefs.getString(pkey + "_b", "").orEmpty(),
+                authMethod = prefs.getString(pkey + "_m", "BEARER").orEmpty(),
+                flow = prefs.getString(pkey + "_f", "B").orEmpty(),
+                ts = ts
+            )
+        }
+
+        fun clear() {
+            prefs.edit()
+                .remove(pkey + "_t").remove(pkey + "_b").remove(pkey + "_m")
+                .remove(pkey + "_f").remove(pkey + "_ts")
+                .apply()
+        }
+
+        private fun readTimes(): MutableList<Long> {
+            val raw = prefs.getString(hkey, "").orEmpty()
+            if (raw.isBlank()) return mutableListOf()
+            val now = System.currentTimeMillis()
+            return raw.split(",")
+                .mapNotNull { it.toLongOrNull() }
+                .filter { now - it < CAP_WINDOW_MS }
+                .toMutableList()
+        }
+
+        /** Throws when the hourly handshake cap is reached (not auth failure). */
+        fun checkCap() {
+            if (readTimes().size >= CAP_MAX) {
+                throw StalkerException(
+                    "Too many connection attempts — wait a while before retrying"
+                )
+            }
+        }
+
+        fun recordHandshake() {
+            val times = readTimes()
+            times.add(System.currentTimeMillis())
+            prefs.edit().putString(hkey, times.joinToString(",")).apply()
+        }
+
+        fun handshakesThisHour(): Int = readTimes().size
+    }
+
+    /** v4.6: persists the current working session (called after a successful
+     * handshake and whenever the auth method/flow settles). */
+    private fun persistSession() {
+        val t = token ?: return
+        if (t.isBlank()) return
+        sessionStore.save(t, apiBase, authMethod.name, debugFlow)
+    }
+
+    /**
+     * v4.6: restores the persisted session into this instance (token,
+     * apiBase, authMethod, flow). Returns true when a usable session was
+     * restored. Sets [debugSessionSource] and syncs the token cookie.
+     */
+    private fun restoreSession(): Boolean {
+        val s = sessionStore.load() ?: return false
+        token = s.token
+        lastHandshakeToken = s.token
+        if (s.apiBase.isNotBlank()) apiBase = s.apiBase
+        authMethod = try {
+            AuthMethod.valueOf(s.authMethod)
+        } catch (e: Exception) {
+            AuthMethod.BEARER
+        }
+        debugFlow = if (s.flow == "A") "A" else "B"
+        debugSessionSource = "cached (prefs)"
+        syncTokenCookie()
+        android.util.Log.i(
+            "StalkerApi",
+            "restoreSession: token=${s.token.take(8)}… apiBase=${s.apiBase} " +
+                "method=${s.authMethod} flow=${s.flow} " +
+                "age=${(System.currentTimeMillis() - s.ts) / 1000}s"
+        )
+        return true
     }
 }
 
