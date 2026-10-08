@@ -23,6 +23,14 @@
             android:textColor="@color/teal"
             android:textSize="40sp"
             android:textStyle="bold" />
+
+        <!-- v4.9: poster/logo image; hidden until a poster loads. -->
+        <ImageView
+            android:id="@+id/ivPoster"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:visibility="gone" />
     </FrameLayout>
 
     <TextView
