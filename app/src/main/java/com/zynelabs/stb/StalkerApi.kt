@@ -241,6 +241,13 @@ class StalkerApi(
         private set
     @Volatile var debugHandshakeResponse: String? = null
         private set
+    /**
+     * v4.4: handshake RESPONSE headers (first 500 chars, redacted) — the
+     * cookie hypothesis: if the portal's handshake sets a session cookie
+     * via Set-Cookie, it must appear here; if absent, the hypothesis dies.
+     */
+    @Volatile var debugHandshakeRespHeaders: String? = null
+        private set
 
     /**
      * v3.6: get_profile request diagnostics (FIRST attempt only — the
@@ -271,7 +278,9 @@ class StalkerApi(
     @Volatile var debugHandshakeCount: Int = 0
         private set
 
-    /** v3.4: one-line redacted header dump for Copy Debug Info. */
+    /** v3.4: one-line redacted header dump for Copy Debug Info.
+     * v4.4: Cookie header values are name-shown/value-truncated (the token
+     * cookie for TOKEN_COOKIE portals must not leak in full). */
     private fun debugHeaderDump(headers: okhttp3.Headers = buildHeaders()): String {
         val sb = StringBuilder()
         for (i in 0 until headers.size) {
@@ -279,18 +288,81 @@ class StalkerApi(
             var value = headers.value(i)
             if (name.equals("Authorization", ignoreCase = true)) {
                 value = "Bearer <redacted>"
+            } else if (name.equals("Cookie", ignoreCase = true)) {
+                value = redactCookieHeader(value)
             }
             if (sb.isNotEmpty()) sb.append("; ")
             sb.append("$name: $value")
         }
-        // cookies actually sent
-        val url = ("$baseUrl/").toHttpUrlOrNull()
-        if (url != null) {
-            val cookies = cookieJar.loadForRequest(url)
-                .joinToString("; ") { "${it.name}=${it.value.take(12)}${if (it.value.length > 12) "…" else ""}" }
-            if (cookies.isNotEmpty()) sb.append("; Cookie: $cookies")
+        // cookies actually sent — v4.4: buildHeaders() now emits the merged
+        // Cookie header itself, so only append the jar dump when no Cookie
+        // header is present (avoids double-reporting).
+        val hasCookieHeader =
+            (0 until headers.size).any { headers.name(it).equals("Cookie", ignoreCase = true) }
+        if (!hasCookieHeader) {
+            val url = ("$baseUrl/").toHttpUrlOrNull()
+            if (url != null) {
+                val cookies = cookieJar.loadForRequest(url)
+                    .joinToString("; ") { "${it.name}=${it.value.take(12)}${if (it.value.length > 12) "…" else ""}" }
+                if (cookies.isNotEmpty()) sb.append("; Cookie: $cookies")
+            }
         }
         return sb.toString()
+    }
+
+    /** v4.4: shows cookie names with truncated values (safe to paste). */
+    private fun redactCookieHeader(value: String): String =
+        value.split(";").joinToString("; ") { part ->
+            val p = part.trim()
+            val n = p.substringBefore("=")
+            val v = p.substringAfter("=", "")
+            "$n=${v.take(12)}${if (v.length > 12) "…" else ""}"
+        }
+
+    /**
+     * v4.4: builds the explicit `Cookie:` request header — the
+     * packet-capture-verified MAG values (mac, stb_lang, timezone) FIRST,
+     * then any server cookies held by the jar (e.g. a session cookie from
+     * the handshake's Set-Cookie). Manual values win on name conflicts.
+     * OkHttp's bridge skips jar injection when a Cookie header is already
+     * present, so merging here is what lets server cookies ride along.
+     */
+    private fun buildCookieHeader(): String {
+        val parts = LinkedHashMap<String, String>()
+        parts["mac"] = mac
+        parts["stb_lang"] = "en"
+        parts["timezone"] = "GMT"
+        val url = apiBase.toHttpUrlOrNull() ?: ("$baseUrl/").toHttpUrlOrNull()
+        if (url != null) {
+            for (c in cookieJar.loadForRequest(url)) {
+                parts.putIfAbsent(c.name, c.value)
+            }
+        }
+        return parts.entries.joinToString("; ") { (k, v) -> "$k=$v" }
+    }
+
+    /**
+     * v4.4: one-line redacted dump of RESPONSE headers for Copy Debug
+     * Info. Set-Cookie values are name-shown/value-truncated — enough to
+     * confirm the cookie hypothesis without leaking session material.
+     */
+    private fun buildRespHeaderDump(headers: okhttp3.Headers): String {
+        val sb = StringBuilder()
+        for (i in 0 until headers.size) {
+            val name = headers.name(i)
+            var value = headers.value(i)
+            if (name.equals("set-cookie", ignoreCase = true)) {
+                val pair = value.substringBefore(";").trim()
+                val n = pair.substringBefore("=")
+                val v = pair.substringAfter("=", "")
+                value = "$n=${v.take(12)}${if (v.length > 12) "…" else ""} (attrs stripped)"
+            } else if (name.equals("authorization", ignoreCase = true)) {
+                value = "<redacted>"
+            }
+            if (sb.isNotEmpty()) sb.append("; ")
+            sb.append("$name: $value")
+        }
+        return sb.toString().take(500)
     }
 
     /** v3.4: assembles the Copy Debug Info text (called from Settings). */
@@ -310,6 +382,9 @@ class StalkerApi(
         sb.appendLine()
         sb.appendLine("Handshake response (1000 chars):")
         sb.appendLine(debugHandshakeResponse ?: "(none yet)")
+        sb.appendLine()
+        sb.appendLine("Handshake response headers (500 chars):")
+        sb.appendLine(debugHandshakeRespHeaders ?: "(none yet)")
         sb.appendLine()
         sb.appendLine("Channel Validation (first itv/get_ordered_list attempt):")
         sb.appendLine("URL: ${debugProfileUrl ?: "(none yet)"}")
@@ -390,6 +465,11 @@ class StalkerApi(
             // v4.0: restored (packet-capture verified — OTT sends Referer:
             // http://mag.tiger-ott.net:80/c/). v3.5 wrongly removed it.
             .add("Referer", "$baseUrl/")
+            // v4.4: explicit Cookie header — the verified MAG values merged
+            // with jar-held server cookies (handshake Set-Cookie). OkHttp
+            // skips its own jar injection when this header is present, so
+            // the merge in buildCookieHeader() is what carries the session.
+            .add("Cookie", buildCookieHeader())
         // v2.4: the session token travels as an Authorization: Bearer header
         // (stock Ministra behavior, Wireshark-verified) — never as a token=
         // query param. The MAC travels in the mac cookie only.
@@ -691,6 +771,7 @@ class StalkerApi(
         debugProfileHeaders = null
         debugProfileHttpCode = null
         debugProfileBody = null
+        debugHandshakeRespHeaders = null
         syncTokenCookie() // drop any stale token cookie before handshaking
         // v3.4: NO stb_type param — clean OTT-like request (was MAG250).
         // v3.8: handshake includes empty token= param, matching the working
@@ -708,8 +789,11 @@ class StalkerApi(
                 debugHandshakeUrl =
                     buildUrl("stb", "handshake", mapOf("token" to "")).toString()
                 debugHandshakeHeaders = debugHeaderDump()
-                val raw = getRaw("stb", "handshake", mapOf("token" to ""))
+                val (raw, respHeaders) = getRaw("stb", "handshake", mapOf("token" to ""))
                 debugHandshakeResponse = raw.replace(Regex("\\s+"), " ").take(1000)
+                // v4.4: capture response headers — Set-Cookie here confirms
+                // the cookie hypothesis; its absence kills it.
+                debugHandshakeRespHeaders = buildRespHeaderDump(respHeaders)
                 android.util.Log.i(
                     "StalkerApi",
                     "handshake: OK via $candidate, " +
@@ -730,6 +814,9 @@ class StalkerApi(
                 // before any other API call can run. get() asserts the wire
                 // token matches this (TOKEN MISMATCH log otherwise).
                 lastHandshakeToken = newToken
+                // v4.4: log the jar after handshake — shows whether the
+                // portal set a session cookie (cookie hypothesis).
+                android.util.Log.i("StalkerApi", "handshake: jar={${cookieJar.dump()}}")
                 syncTokenCookie() // TOKEN_COOKIE: publish the fresh token
                 return newToken
             } catch (e: StalkerException) {
@@ -753,12 +840,14 @@ class StalkerApi(
     /**
      * v3.2: raw GET returning the body string (for handshake logging).
      * Same request shape as [get] but without JSON parsing.
+     * v4.4: also returns the response headers so handshake() can capture
+     * them for the Set-Cookie diagnostic (Copy Debug Info).
      */
     private suspend fun getRaw(
         type: String,
         action: String,
         extra: Map<String, String> = emptyMap()
-    ): String = withContext(Dispatchers.IO) {
+    ): Pair<String, okhttp3.Headers> = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(buildUrl(type, action, extra))
             .headers(buildHeaders())
@@ -771,7 +860,7 @@ class StalkerApi(
             if (body.isBlank()) {
                 throw StalkerException("Empty response from portal (HTTP ${response.code})")
             }
-            body
+            Pair(body, response.headers)
         }
     }
 
@@ -1363,6 +1452,14 @@ class StalkerApi(
         override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
             for (cookie in cookies) {
                 store.removeAll { it.name == cookie.name }
+                // v4.4: log every server-set cookie — the cookie hypothesis
+                // lives or dies on whether the handshake sets one.
+                android.util.Log.i(
+                    "StalkerApi",
+                    "cookieJar: saved ${cookie.name}=${cookie.value.take(12)}… " +
+                        "for ${url.host} (path=${cookie.path}, " +
+                        "secure=${cookie.secure}, httpOnly=${cookie.httpOnly})"
+                )
             }
             store.addAll(cookies)
         }
@@ -1372,6 +1469,12 @@ class StalkerApi(
             store.removeAll { it.expiresAt <= now }
             return store.toList()
         }
+
+        /** v4.4: diagnostic dump of jar contents (names + truncated values). */
+        fun dump(): String =
+            store.joinToString("; ") {
+                "${it.name}=${it.value.take(12)}${if (it.value.length > 12) "…" else ""}"
+            }
     }
 }
 
