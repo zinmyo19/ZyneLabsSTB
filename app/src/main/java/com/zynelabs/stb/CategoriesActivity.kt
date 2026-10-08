@@ -76,6 +76,34 @@ class CategoriesActivity : AppCompatActivity() {
         )
     }
 
+    /**
+     * v5.5: country flag emoji for a genre title (e.g. "EU|FR|MAX PPV" → 🇫🇷).
+     * Parses 2-letter tokens, maps UK→GB, skips non-countries (EU/TV/HD),
+     * validates against ISO country list. Zero-size, offline.
+     */
+    object FlagEmoji {
+        private val ALIAS = mapOf("UK" to "GB", "EN" to "GB")
+        private val SKIP = setOf("EU", "TV", "HD", "4K", "3D", "VIP", "PPV", "VOD", "XXX", "AD")
+        private val ISO by lazy { java.util.Locale.getISOCountries().toSet() }
+
+        fun fromGenreTitle(title: String): String {
+            val tokens = title.uppercase().split(Regex("[^A-Z]+"))
+                .filter { it.length == 2 }
+            for (t in tokens) {
+                if (t in SKIP) continue
+                val code = ALIAS[t] ?: t
+                if (code in SKIP || code !in ISO) continue
+                return code.toFlagEmoji()
+            }
+            return ""
+        }
+
+        private fun String.toFlagEmoji(): String =
+            map { c ->
+                String(Character.toChars(0x1F1E6 + (c.code - 'A'.code)))
+            }.joinToString("")
+    }
+
     // ------------------------------------------------------------ adapter
 
     private class GenreAdapter(
@@ -106,10 +134,15 @@ class CategoriesActivity : AppCompatActivity() {
             private val b: ItemChannelCardBinding
         ) : RecyclerView.ViewHolder(b.root) {
             fun bind(genre: StalkerApi.Genre) {
-                // Reuse the channel card: letter tile + title.
+                // v5.5: flag emoji tile when a country code is found in
+                // the title (e.g. "EU|FR|..." → 🇫🇷); letter fallback.
                 b.tvName.text = genre.title
-                val letter = genre.title.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?"
-                b.tvLogoLetter.text = letter
+                val flag = FlagEmoji.fromGenreTitle(genre.title)
+                b.tvLogoLetter.text = if (flag.isNotEmpty()) {
+                    flag
+                } else {
+                    genre.title.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?"
+                }
                 b.ivPoster.isVisible = false
                 b.tvLogoLetter.isVisible = true
                 b.root.setOnClickListener { onClick(genre) }
