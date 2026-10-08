@@ -104,6 +104,13 @@
     <string name="prev_channel">Previous channel</string>
     <string name="next_channel">Next channel</string>
     <string name="play_pause">Play / pause</string>
+    <string name="rewind_10s">Back 10 seconds</string>
+    <string name="forward_10s">Forward 10 seconds</string>
+    <string name="aspect_button">Aspect ratio</string>
+    <string name="volume_button">Mute / unmute</string>
+    <string name="lock_button">Lock screen</string>
+    <string name="unlock_hint">Tap to unlock</string>
+    <string name="stats_title">Playback stats</string>
     <string name="tracks_audio_title">Audio track</string>
     <string name="sleep_timer_done">Sleep timer: playback stopped</string>
     <string name="on">On</string>
