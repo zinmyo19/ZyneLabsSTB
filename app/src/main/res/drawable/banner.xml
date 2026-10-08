@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Leanback banner shown on the Android TV home screen. -->
+<!-- Leanback banner shown on the Android TV home screen (v5.0: DZ shield crop). -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
-            <solid android:color="#0B141F" />
+            <solid android:color="#0A0F14" />
         </shape>
     </item>
     <item
         android:width="120dp"
         android:height="68dp"
         android:gravity="center"
-        android:drawable="@drawable/ic_launcher_foreground" />
+        android:drawable="@drawable/banner_logo" />
 </layer-list>
