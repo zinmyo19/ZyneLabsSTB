@@ -76,7 +76,7 @@
             android:paddingStart="14dp"
             android:paddingEnd="14dp"
             android:text="@string/tracks_button"
-            android:textColor="@color/teal"
+            android:textColor="@color/gold"
             android:textSize="13sp" />
     </LinearLayout>
 
@@ -88,7 +88,7 @@
         android:layout_gravity="top|start"
         android:layout_marginTop="76dp"
         android:layout_marginStart="16dp"
-        android:background="#A0000000"
+        android:background="@drawable/info_box_background"
         android:orientation="vertical"
         android:padding="14dp">
 
@@ -105,7 +105,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:textColor="@color/teal"
+            android:textColor="@color/gold"
             android:textSize="12sp" />
     </LinearLayout>
 
@@ -184,8 +184,8 @@
                 android:layout_weight="1"
                 android:focusable="true"
                 android:max="1000"
-                android:progressTint="@color/teal"
-                android:thumbTint="@color/teal" />
+                android:progressTint="@color/gold"
+                android:thumbTint="@color/gold" />
 
             <TextView
                 android:id="@+id/tvDuration"
@@ -202,7 +202,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
-        android:indeterminateTint="@color/teal" />
+        android:indeterminateTint="@color/gold" />
 
     <TextView
         android:id="@+id/tvError"
