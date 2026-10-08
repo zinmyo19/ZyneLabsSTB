@@ -39,6 +39,7 @@
     <string name="probe_title">Portal API Probe</string>
     <string name="probe_row">Probe Portal API</string>
     <string name="debug_row">Copy Debug Info</string>
+    <string name="reset_connection_row">Reset connection</string>
     <string name="start_probe">Start Probe</string>
     <string name="tv_guide">TV Guide</string>
     <string name="today">Today</string>
