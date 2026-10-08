@@ -31,6 +31,13 @@ class SettingsActivity : AppCompatActivity() {
         private const val ID_DEBUG = "debug"
         private const val ID_RESET = "reset"
         private const val ID_VERSION = "version"
+        // v5.0 player settings
+        private const val ID_HDR_PLAYER = "header_player"
+        private const val ID_SPEED = "speed"
+        private const val ID_SUB_SIZE = "sub_size"
+        private const val ID_SUB_COLOR = "sub_color"
+        private const val ID_BUFFER = "buffer"
+        private const val ID_SLEEP = "sleep"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -80,6 +87,37 @@ class SettingsActivity : AppCompatActivity() {
                 getString(R.string.setting_portal),
                 Prefs.getMac(this)
             ),
+            // v5.0: Player section
+            RowItem(
+                ID_HDR_PLAYER,
+                getString(R.string.section_player),
+                header = true
+            ),
+            RowItem(
+                ID_SPEED,
+                getString(R.string.setting_speed),
+                Prefs.getPlaybackSpeedLabel(this)
+            ),
+            RowItem(
+                ID_SUB_SIZE,
+                getString(R.string.setting_subtitle_size),
+                Prefs.getSubtitleSize(this)
+            ),
+            RowItem(
+                ID_SUB_COLOR,
+                getString(R.string.setting_subtitle_color),
+                Prefs.getSubtitleColor(this)
+            ),
+            RowItem(
+                ID_BUFFER,
+                getString(R.string.setting_buffer),
+                Prefs.getBufferSize(this)
+            ),
+            RowItem(
+                ID_SLEEP,
+                getString(R.string.setting_sleep),
+                Prefs.getSleepTimer(this)
+            ),
             RowItem(
                 ID_PROBE,
                 getString(R.string.probe_row),
@@ -105,12 +143,19 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun onRowClick(id: String) {
+        if (id == ID_HDR_PLAYER) return // section header, not interactive
         when (id) {
             ID_ASPECT -> Prefs.cycleAspectRatio(this)
             ID_SUBTITLES -> Prefs.setSubtitlesEnabled(
                 this, !Prefs.getSubtitlesEnabled(this)
             )
             ID_AUDIO -> Prefs.cycleAudioLang(this)
+            // v5.0 player settings
+            ID_SPEED -> Prefs.cyclePlaybackSpeed(this)
+            ID_SUB_SIZE -> Prefs.cycleSubtitleSize(this)
+            ID_SUB_COLOR -> Prefs.cycleSubtitleColor(this)
+            ID_BUFFER -> Prefs.cycleBufferSize(this)
+            ID_SLEEP -> Prefs.cycleSleepTimer(this)
             ID_PORTAL -> {
                 startActivity(
                     Intent(this, MainActivity::class.java)
