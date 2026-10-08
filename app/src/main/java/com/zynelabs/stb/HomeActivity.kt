@@ -24,15 +24,19 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
- * v4.8 unified leanback home (approved template #2) for TV + phone.
- * TV (UiModeManager = television): left sidebar nav, fully D-pad navigable.
- * Phone: same card UI with a bottom navigation bar, touch-friendly.
- *
- * Sections: Live TV (genre rows of channel cards), Movies / Series
- * (VOD category cards), Guide, Settings. Backend (StalkerApi v4.7)
- * is untouched.
+ * v5.1 home rebuilt to Dominic's mockup EXACTLY:
+ * - Top header: cube logo + "ZyneLabs STB" wordmark | date/time + ZONE 1 • User + profile (TV)
+ * - Left sidebar "NAVIGATION" with teal-pill active row (TV)
+ * - Featured banner: NOW LIVE + LIVE badges, big title, meta line, teal progress bar
+ * - "Popular Channels" + "See all →" with photo-thumbnail cards, glowing teal focus ring
+ * - Bottom D-pad hint bar (TV)
+ * Phone: same visual language, banner + popular + rows + bottom nav.
+ * Backend (StalkerApi) untouched. Caching logic kept from v4.9.
  */
 class HomeActivity : AppCompatActivity() {
 
@@ -43,15 +47,13 @@ class HomeActivity : AppCompatActivity() {
     private var featuredChannel: Channel? = null
 
     private val rowsAdapter = RowsAdapter()
-    /** Section -> its nav view, for the active-section highlight. */
+    private val popularAdapter = CardsAdapter()
     private val navSectionViews = mutableMapOf<Section, View>()
 
     private enum class Section { LIVE_TV, MOVIES, SERIES }
 
-    /** One content row: title + cards. */
     private data class HomeRow(val title: String, val cards: List<CardItem>)
 
-    /** Card content: either a live channel or a VOD category. */
     private sealed class CardItem {
         data class Live(val channel: Channel) : CardItem()
         data class Vod(
@@ -80,14 +82,29 @@ class HomeActivity : AppCompatActivity() {
 
         binding.sidebar.isVisible = isTv
         binding.bottomNav.isVisible = !isTv
+        binding.headerUserBox.isVisible = isTv
+        binding.headerProfile.isVisible = isTv
+        binding.tvDpadHints.isVisible = isTv
         binding.tvPortalInfo.text = getString(R.string.home_portal_info, Prefs.getMac(this))
+
+        // v5.1: header date like mockup ("Thu, 12 Dec • 20:17").
+        binding.tvHeaderDate.text = SimpleDateFormat(
+            "EEE, d MMM • HH:mm", Locale.getDefault()
+        ).format(Date())
 
         binding.rowsRecycler.layoutManager = LinearLayoutManager(this)
         binding.rowsRecycler.adapter = rowsAdapter
+        binding.popularRecycler.layoutManager =
+            LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        binding.popularRecycler.adapter = popularAdapter
 
         buildNav()
         binding.btnRetry.setOnClickListener { loadSection(forceRefresh = true) }
         binding.banner.setOnClickListener { playFeatured() }
+        binding.tvSeeAll.setOnClickListener {
+            binding.rowsRecycler.smoothScrollToPosition(0)
+            if (isTv) binding.rowsRecycler.requestFocus()
+        }
 
         selectSection(Section.LIVE_TV)
     }
@@ -119,7 +136,6 @@ class HomeActivity : AppCompatActivity() {
             b.tvNavIcon.text = e.icon
             b.tvNavLabel.text = getString(e.labelRes)
             if (!isTv) {
-                // Bottom bar: five equal buttons, icon above label.
                 b.root.orientation = LinearLayout.VERTICAL
                 b.root.gravity = android.view.Gravity.CENTER
                 b.root.layoutParams = LinearLayout.LayoutParams(
@@ -139,8 +155,8 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
+    /** v5.1: active nav row = teal pill (mockup), inactive = transparent. */
     private fun selectSection(s: Section) {
-        // v4.9: re-tapping the active section forces a refresh.
         val force = (s == section && rowsAdapter.itemCount > 0)
         section = s
         highlightNav()
@@ -150,32 +166,27 @@ class HomeActivity : AppCompatActivity() {
     private fun highlightNav() {
         val teal = ContextCompat.getColor(this, R.color.teal)
         val white = ContextCompat.getColor(this, R.color.text_primary)
+        val darkText = ContextCompat.getColor(this, R.color.background)
+        val pill = ContextCompat.getDrawable(this, R.drawable.nav_item_active)
+        val plain = ContextCompat.getDrawable(this, R.drawable.nav_item_selector)
         for ((sec, view) in navSectionViews) {
+            val active = sec == section
+            view.background = (if (active) pill else plain)?.constantState?.newDrawable()
             view.findViewById<android.widget.TextView>(R.id.tvNavLabel)
-                ?.setTextColor(if (sec == section) teal else white)
+                ?.setTextColor(if (active && isTv) darkText else if (active) teal else white)
         }
     }
 
     // ------------------------------------------------------------------ loading
 
-    /**
-     * v4.9: cached-first loading. Shows cached rows instantly (even stale)
-     * so back-navigation from the player never spins; refreshes silently
-     * in the background when the cache is stale (>5 min) or [forceRefresh].
-     * The full-screen spinner only appears when there is nothing cached.
-     */
     private fun loadSection(forceRefresh: Boolean = false) {
         loadJob?.cancel()
         binding.errorBox.isVisible = false
 
         val cachedRows = peekCachedRows()
         if (!cachedRows.isNullOrEmpty()) {
-            rowsAdapter.submit(cachedRows)
-            binding.rowsRecycler.isVisible = true
-            updateBanner(cachedRows)
-            binding.progressBar.isVisible = false
+            onRowsLoaded(cachedRows, fromCache = true)
             if (!forceRefresh && isCacheFresh()) return
-            // Stale or forced: silent background refresh, no spinner.
         } else {
             binding.progressBar.isVisible = true
             binding.rowsRecycler.isVisible = false
@@ -194,17 +205,13 @@ class HomeActivity : AppCompatActivity() {
                     )
                 }
                 cacheRows(rows)
-                rowsAdapter.submit(rows)
-                binding.rowsRecycler.isVisible = true
-                updateBanner(rows)
+                onRowsLoaded(rows, fromCache = false)
                 if (rows.isEmpty()) {
                     showError(getString(R.string.error_no_content))
                 } else if (isTv) {
                     binding.banner.requestFocus()
                 }
             } catch (e: Exception) {
-                // v4.9: if we already show cached rows, don't replace them
-                // with an error — the data on screen is still usable.
                 if (rowsAdapter.itemCount == 0) {
                     showError(getString(R.string.error_load_failed, e.message.orEmpty()))
                 }
@@ -214,7 +221,23 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
-    /** Cache key is per provider (portal+MAC) and section. */
+    private fun onRowsLoaded(rows: List<HomeRow>, fromCache: Boolean) {
+        rowsAdapter.submit(rows)
+        binding.rowsRecycler.isVisible = true
+        binding.progressBar.isVisible = false
+        updateBanner(rows)
+        updatePopular(rows)
+    }
+
+    /** v5.1: "Popular Channels" = first 12 cards of the loaded section. */
+    private fun updatePopular(rows: List<HomeRow>) {
+        val cards = rows.flatMap { it.cards }.take(12)
+        val has = cards.isNotEmpty()
+        binding.popularHeader.isVisible = has
+        binding.popularRecycler.isVisible = has
+        if (has) popularAdapter.submit(cards)
+    }
+
     private fun sectionCacheKey(): String {
         val provider = (Prefs.getPortalUrl(this) + "|" + Prefs.getMac(this)).hashCode()
             .toString(16)
@@ -241,7 +264,6 @@ class HomeActivity : AppCompatActivity() {
         try {
             ListCache.put(this, sectionCacheKey(), rowsToJson(rows), persist = true)
         } catch (e: Exception) {
-            // Caching is best-effort; never break the UI.
         }
     }
 
@@ -297,7 +319,6 @@ class HomeActivity : AppCompatActivity() {
         return out
     }
 
-    /** Genre rows, one page (14) of channels each, fetched in parallel. */
     private suspend fun loadLiveRows(api: StalkerApi): List<HomeRow> = coroutineScope {
         val genres = api.getGenres()
         if (genres.isEmpty()) {
@@ -316,17 +337,11 @@ class HomeActivity : AppCompatActivity() {
             .map { (title, chans) -> HomeRow(title, chans.map { CardItem.Live(it) }) }
     }
 
-    /**
-     * v4.9: series tries the portal's "series" module first, falling back
-     * to title-filtered VOD categories (many panels keep series under VOD).
-     */
     private suspend fun loadVodRows(
         api: StalkerApi,
         mode: String,
         title: String
     ): List<HomeRow> {
-        // v4.9: vodType tracks the module that ACTUALLY served the
-        // categories, so the drill-down browser queries the same one.
         var vodType = "vod"
         val cats: List<StalkerApi.VodCategory> = if (mode == VodBrowserActivity.MODE_SERIES) {
             val series = api.getVodCategories("series")
@@ -341,10 +356,7 @@ class HomeActivity : AppCompatActivity() {
         }
         if (cats.isEmpty()) return emptyList()
         return listOf(
-            HomeRow(
-                title,
-                cats.map { CardItem.Vod(it, mode, vodType) }
-            )
+            HomeRow(title, cats.map { CardItem.Vod(it, mode, vodType) })
         )
     }
 
@@ -354,7 +366,9 @@ class HomeActivity : AppCompatActivity() {
             "season" in t || "episode" in t
     }
 
+    /** v5.1: banner per mockup — big title, meta line, teal progress. */
     private fun updateBanner(rows: List<HomeRow>) {
+        val total = rows.sumOf { it.cards.size }
         val firstLive = rows.asSequence()
             .flatMap { it.cards.asSequence() }
             .filterIsInstance<CardItem.Live>()
@@ -364,19 +378,17 @@ class HomeActivity : AppCompatActivity() {
             binding.tvBannerTitle.text = firstLive.channel.name.ifBlank {
                 getString(R.string.unknown_channel)
             }
-            binding.tvBannerSubtitle.text = getString(
-                R.string.subtitle_live_tv,
-                rows.sumOf { r -> r.cards.size }
-            )
+            binding.tvBannerSubtitle.text = getString(R.string.subtitle_live_tv, total)
+            binding.tvBannerMeta.text = getString(R.string.banner_meta_live, total)
         } else {
             binding.tvBannerTitle.text = getString(
                 if (section == Section.MOVIES) R.string.nav_movies else R.string.nav_series
             )
-            binding.tvBannerSubtitle.text = getString(
-                R.string.subtitle_vod,
-                rows.sumOf { r -> r.cards.size }
-            )
+            binding.tvBannerSubtitle.text = getString(R.string.subtitle_vod, total)
+            binding.tvBannerMeta.text = getString(R.string.banner_meta_vod, total)
         }
+        binding.tvBannerTime.text = ""
+        binding.bannerProgress.progress = 40
     }
 
     private fun showError(message: String) {
@@ -482,7 +494,6 @@ class HomeActivity : AppCompatActivity() {
                         holder.itemView.context.getString(R.string.unknown_channel)
                     }
                     holder.b.tvName.text = name
-                    // v4.9: channel logo poster; letter tile is the fallback.
                     holder.b.tvLogoLetter.visibility = View.VISIBLE
                     holder.b.tvLogoLetter.text =
                         name.trim().firstOrNull()?.uppercase() ?: "?"
