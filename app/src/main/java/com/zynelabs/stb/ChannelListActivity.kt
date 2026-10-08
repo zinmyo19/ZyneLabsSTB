@@ -73,17 +73,28 @@ class ChannelListActivity : AppCompatActivity() {
         binding.progressBar.isVisible = true
         binding.tvError.isVisible = false
         binding.btnRetry.isVisible = false
+        // v5.3: show live load progress ("Loading… 1,240 channels").
+        binding.tvTitle.text = intent.getStringExtra(EXTRA_GENRE_TITLE)
+            .orEmpty().ifBlank { getString(R.string.all_channels) }
 
         lifecycleScope.launch {
             try {
                 val api = StalkerSession.get(this@ChannelListActivity)
                 val genreId = intent.getStringExtra(EXTRA_GENRE_ID)
-                // v2.8: paginated loading (get_ordered_list, 14/page) instead
-                // of the unreliable 25MB get_all_channels single response.
-                // Genre filtering happens server-side + client-side in the API.
+                // v5.3: FULL pagination — loops pages until an empty page,
+                // no artificial cap, so all 21k channels load (fixes the
+                // "only 98 channels" report vs OTT).
                 val channels = api.getChannelsPaginated(
-                    genreId = genreId?.ifBlank { null }
+                    genreId = genreId?.ifBlank { null },
+                    onProgress = { _, soFar ->
+                        binding.tvTitle.text = getString(
+                            R.string.loading_channels_count, soFar
+                        )
+                    }
                 )
+                // Restore the real title once done.
+                binding.tvTitle.text = intent.getStringExtra(EXTRA_GENRE_TITLE)
+                    .orEmpty().ifBlank { getString(R.string.all_channels) }
                 adapter.submitList(channels) {
                     if (channels.isNotEmpty()) {
                         binding.recyclerView.requestFocus()
