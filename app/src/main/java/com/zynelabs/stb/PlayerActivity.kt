@@ -154,6 +154,23 @@ class PlayerActivity : AppCompatActivity() {
         binding.btnPlayPause.setOnClickListener { togglePlayPause() }
         binding.btnPrev.setOnClickListener { prevChannel(); bumpHideTimer() }
         binding.btnNext.setOnClickListener { nextChannel(); bumpHideTimer() }
+        // v5.5: remaining FlowPlay transport functions.
+        binding.btnRewind.setOnClickListener { seekBy(-10_000); bumpHideTimer() }
+        binding.btnForward.setOnClickListener { seekBy(10_000); bumpHideTimer() }
+        binding.btnAspectTransport.setOnClickListener {
+            val label = Prefs.cycleAspectRatio(this)
+            applyAspectRatio()
+            binding.btnAspect.text = label
+            bumpHideTimer()
+        }
+        binding.btnVolume.setOnClickListener { toggleMute(); updateVolumeIcon() }
+        binding.btnLock.setOnClickListener { setLocked(true) }
+        updateVolumeIcon()
+        // v5.5: ±10s seek buttons are VOD-only (FlowPlay pattern).
+        binding.btnRewind.isVisible = isVod
+        binding.btnForward.isVisible = isVod
+        // v5.5: lock overlay — tap to unlock.
+        binding.lockOverlay.setOnClickListener { setLocked(false) }
         binding.seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
                 if (fromUser) bumpHideTimer()
@@ -246,6 +263,11 @@ class PlayerActivity : AppCompatActivity() {
     /** Every D-pad key keeps the overlay alive (FlowPlay pattern). */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN) {
+            // v5.5: locked — any key unlocks (BACK included).
+            if (locked) {
+                setLocked(false)
+                return true
+            }
             when (event.keyCode) {
                 KeyEvent.KEYCODE_BACK -> {
                     // v5.3: BACK closes drawers first, then exits.
@@ -441,7 +463,9 @@ class PlayerActivity : AppCompatActivity() {
             RowItem("d_zoom", getString(R.string.setting_zoom), "${(videoScale * 100).toInt()}%"),
             RowItem("d_prev", getString(R.string.setting_prev_channel), ""),
             RowItem("d_next", getString(R.string.setting_next_channel), ""),
-            RowItem("d_external", getString(R.string.setting_external), "")
+            RowItem("d_external", getString(R.string.setting_external), ""),
+            // v5.5: playback stats (FlowPlay).
+            RowItem("d_stats", getString(R.string.stats_title), "")
         )
         drawerSettingsAdapter.submitList(rows)
     }
@@ -501,9 +525,43 @@ class PlayerActivity : AppCompatActivity() {
                 return
             }
             "d_external" -> openExternal()
+            // v5.5: playback stats (FlowPlay).
+            "d_stats" -> showStatsDialog()
         }
         refreshDrawerSettings()
         refreshStripLabels()
+    }
+
+    /** v5.5: playback stats dialog (FlowPlay) — bitrate, resolution, codec. */
+    private fun showStatsDialog() {
+        val p = player
+        val vf = p?.videoFormat
+        val af = p?.audioFormat
+        val bitrate = p?.let {
+            try { it.currentTracks.groups
+                .flatMap { g -> (0 until g.length).map { i -> g.getTrackFormat(i) } }
+                .maxOfOrNull { f -> f.bitrate } ?: 0
+            } catch (e: Exception) { 0 }
+        } ?: 0
+        val msg = buildString {
+            appendLine("Channel: $channelName")
+            appendLine("Type: ${if (isVod) "VOD" else "Live"}")
+            if (vf != null) {
+                appendLine("Video: ${vf.width}x${vf.height} ${vf.sampleMimeType?.substringAfter("/") ?: ""}")
+                if (vf.frameRate > 0) appendLine("Framerate: ${"%.1f".format(vf.frameRate)} fps")
+            } else appendLine("Video: —")
+            if (af != null) {
+                appendLine("Audio: ${af.sampleMimeType?.substringAfter("/") ?: ""} ${af.channelCount}ch")
+            } else appendLine("Audio: —")
+            if (bitrate > 0) appendLine("Bitrate: ${bitrate / 1000} kbps")
+            appendLine("Speed: ${Prefs.getPlaybackSpeedLabel(this@PlayerActivity)}")
+        }.trimEnd()
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(getString(R.string.stats_title))
+            .setMessage(msg)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+        bumpHideTimer()
     }
 
     // ------------------------------------------------------------ v5.3 PiP
@@ -740,6 +798,8 @@ class PlayerActivity : AppCompatActivity() {
         } catch (e: Exception) {
             // ignore
         }
+        // v5.5: keep the transport volume button in sync.
+        updateVolumeIcon()
         Toast.makeText(
             this,
             getString(if (muted) R.string.muted else R.string.unmuted),
@@ -830,6 +890,39 @@ class PlayerActivity : AppCompatActivity() {
         binding.btnPlayPause.setImageResource(
             if (player?.isPlaying == true) R.drawable.ic_pause else R.drawable.ic_play
         )
+    }
+
+    /** v5.5: ±10s seek (FlowPlay) — VOD only. */
+    private fun seekBy(ms: Long) {
+        val p = player ?: return
+        if (!isVod) return
+        val dur = p.duration
+        val target = (p.currentPosition + ms).coerceIn(0, if (dur > 0) dur else Long.MAX_VALUE)
+        p.seekTo(target)
+    }
+
+    /** v5.5: volume/mute button icon follows mute state (FlowPlay SpeakerIcon). */
+    private fun updateVolumeIcon() {
+        binding.btnVolume.setImageResource(
+            if (muted) R.drawable.ic_volume_mute else R.drawable.ic_volume
+        )
+    }
+
+    // ----- v5.5: screen lock (FlowPlay) -----
+
+    private var locked = false
+
+    private fun setLocked(value: Boolean) {
+        locked = value
+        if (value) {
+            hideControls()
+            closeDrawers()
+            binding.lockOverlay.isVisible = true
+            binding.lockOverlay.requestFocus()
+        } else {
+            binding.lockOverlay.isVisible = false
+            showControls()
+        }
     }
 
     private fun updateProgress() {
