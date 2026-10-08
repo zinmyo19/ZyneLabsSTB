@@ -1,35 +1,116 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- v4.8 unified leanback home (template #2): sidebar on TV, bottom nav on phone. -->
+<!-- v5.1: home rebuilt to Dominic's mockup — header bar, sidebar nav (TV),
+     featured banner, Popular Channels, D-pad hint bar. Phone adapts. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/background"
     android:orientation="vertical">
 
+    <!-- ===== Header bar ===== -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="16dp">
+
+        <ImageView
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:src="@drawable/header_logo" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:text="@string/app_name"
+            android:textColor="@color/text_primary"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="STB"
+            android:textColor="@color/teal"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <!-- TV only: date/time + zone/user + profile -->
+        <LinearLayout
+            android:id="@+id/headerUserBox"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="end"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tvHeaderDate"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="ZONE 1 • User"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <FrameLayout
+            android:id="@+id/headerProfile"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="10dp"
+            android:background="@drawable/profile_circle"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="👤"
+                android:textColor="@color/teal"
+                android:textSize="18sp" />
+        </FrameLayout>
+    </LinearLayout>
+
+    <!-- ===== Body: sidebar (TV) + main ===== -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:orientation="horizontal">
 
-        <!-- Sidebar: TV only (visibility set in code via UiModeManager). -->
+        <!-- Sidebar: TV only -->
         <LinearLayout
             android:id="@+id/sidebar"
-            android:layout_width="250dp"
+            android:layout_width="240dp"
             android:layout_height="match_parent"
             android:background="#0E1826"
             android:orientation="vertical"
-            android:padding="20dp"
+            android:padding="16dp"
             android:visibility="gone">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="28dp"
-                android:text="@string/app_name"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginBottom="20dp"
+                android:letterSpacing="0.3"
+                android:text="NAVIGATION"
                 android:textColor="@color/teal"
-                android:textSize="22sp"
-                android:textStyle="bold" />
+                android:textSize="12sp" />
 
             <LinearLayout
                 android:id="@+id/navContainer"
@@ -47,119 +128,240 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
+                android:textSize="11sp" />
         </LinearLayout>
 
         <!-- Main content -->
-        <LinearLayout
+        <androidx.core.widget.NestedScrollView
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:orientation="vertical"
-            android:padding="20dp">
+            android:clipToPadding="false"
+            android:fillViewport="true">
 
-            <!-- Featured banner -->
-            <FrameLayout
-                android:id="@+id/banner"
+            <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="180dp"
-                android:layout_marginBottom="16dp"
-                android:background="@drawable/banner_selector"
-                android:clickable="true"
-                android:focusable="true">
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
 
-                <LinearLayout
+                <!-- Featured banner -->
+                <FrameLayout
+                    android:id="@+id/banner"
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent"
+                    android:layout_height="210dp"
+                    android:layout_marginBottom="18dp"
+                    android:background="@drawable/banner_bg"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:gravity="center_vertical"
+                        android:orientation="vertical"
+                        android:padding="22dp">
+
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:background="@drawable/badge_dim"
+                                android:paddingStart="10dp"
+                                android:paddingEnd="10dp"
+                                android:paddingTop="4dp"
+                                android:paddingBottom="4dp"
+                                android:text="NOW LIVE"
+                                android:textColor="@color/text_primary"
+                                android:textSize="11sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="8dp"
+                                android:background="@drawable/badge_live"
+                                android:paddingStart="10dp"
+                                android:paddingEnd="10dp"
+                                android:paddingTop="4dp"
+                                android:paddingBottom="4dp"
+                                android:text="● LIVE"
+                                android:textColor="#FFFFFF"
+                                android:textSize="11sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/tvBannerTitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:ellipsize="end"
+                            android:maxLines="2"
+                            android:textColor="@color/text_primary"
+                            android:textSize="26sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tvBannerSubtitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:ellipsize="end"
+                            android:maxLines="1"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="13sp" />
+
+                        <TextView
+                            android:id="@+id/tvBannerMeta"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:textColor="@color/teal"
+                            android:textSize="13sp" />
+                    </LinearLayout>
+
+                    <!-- progress -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="bottom"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingStart="22dp"
+                        android:paddingEnd="22dp"
+                        android:paddingBottom="14dp">
+
+                        <ProgressBar
+                            android:id="@+id/bannerProgress"
+                            style="?android:attr/progressBarStyleHorizontal"
+                            android:layout_width="0dp"
+                            android:layout_height="6dp"
+                            android:layout_weight="1"
+                            android:max="100"
+                            android:progress="40"
+                            android:progressTint="@color/teal"
+                            android:progressBackgroundTint="#233646" />
+
+                        <TextView
+                            android:id="@+id/tvBannerTime"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="12dp"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+                </FrameLayout>
+
+                <!-- Popular Channels header -->
+                <LinearLayout
+                    android:id="@+id/popularHeader"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="10dp"
                     android:gravity="center_vertical"
-                    android:orientation="vertical"
-                    android:padding="24dp">
+                    android:orientation="horizontal">
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="@string/banner_kicker"
-                        android:textColor="@color/teal"
-                        android:textSize="12sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:id="@+id/tvBannerTitle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        android:ellipsize="end"
-                        android:maxLines="1"
+                        android:text="Popular Channels"
                         android:textColor="@color/text_primary"
-                        android:textSize="26sp"
+                        android:textSize="18sp"
                         android:textStyle="bold" />
 
-                    <TextView
-                        android:id="@+id/tvBannerSubtitle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="14sp" />
+                    <Space
+                        android:layout_width="0dp"
+                        android:layout_height="1dp"
+                        android:layout_weight="1" />
 
                     <TextView
+                        android:id="@+id/tvSeeAll"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:text="@string/banner_watch_hint"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:padding="8dp"
+                        android:text="See all →"
                         android:textColor="@color/teal"
-                        android:textSize="13sp" />
+                        android:textSize="14sp" />
                 </LinearLayout>
-            </FrameLayout>
-
-            <!-- Card rows -->
-            <FrameLayout
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1">
 
                 <androidx.recyclerview.widget.RecyclerView
-                    android:id="@+id/rowsRecycler"
+                    android:id="@+id/popularRecycler"
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:clipToPadding="false" />
-
-                <ProgressBar
-                    android:id="@+id/progressBar"
-                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_gravity="center"
-                    android:visibility="gone" />
+                    android:layout_marginBottom="18dp"
+                    android:clipToPadding="false"
+                    android:nestedScrollingEnabled="false" />
 
-                <LinearLayout
-                    android:id="@+id/errorBox"
-                    android:layout_width="wrap_content"
+                <!-- Genre rows -->
+                <FrameLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_gravity="center"
-                    android:gravity="center"
-                    android:orientation="vertical"
-                    android:visibility="gone">
+                    android:minHeight="200dp">
 
-                    <TextView
-                        android:id="@+id/tvError"
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/rowsRecycler"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:clipToPadding="false"
+                        android:nestedScrollingEnabled="false" />
+
+                    <ProgressBar
+                        android:id="@+id/progressBar"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:visibility="gone" />
+
+                    <LinearLayout
+                        android:id="@+id/errorBox"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
                         android:gravity="center"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="16sp" />
+                        android:orientation="vertical"
+                        android:visibility="gone">
 
-                    <Button
-                        android:id="@+id/btnRetry"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="16dp"
-                        android:text="@string/retry" />
-                </LinearLayout>
-            </FrameLayout>
-        </LinearLayout>
+                        <TextView
+                            android:id="@+id/tvError"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:gravity="center"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="16sp" />
+
+                        <Button
+                            android:id="@+id/btnRetry"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="16dp"
+                            android:text="@string/retry" />
+                    </LinearLayout>
+                </FrameLayout>
+            </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
     </LinearLayout>
 
-    <!-- Bottom nav: phone only (visibility set in code). -->
+    <!-- D-pad hint bar: TV only -->
+    <TextView
+        android:id="@+id/tvDpadHints"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:padding="10dp"
+        android:text="• Press OK to watch   • Press MENU for options   • Use D-PAD to navigate"
+        android:textColor="@color/teal"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
+    <!-- Bottom nav: phone only -->
     <LinearLayout
         android:id="@+id/bottomNav"
         android:layout_width="match_parent"
