@@ -17,6 +17,13 @@ object Prefs {
     private const val KEY_SUBTITLES = "subtitles"
     private const val KEY_AUDIO_LANG = "audio_lang"
 
+    // v5.0 player settings
+    private const val KEY_SPEED = "player_speed"
+    private const val KEY_SUB_SIZE = "subtitle_size"
+    private const val KEY_SUB_COLOR = "subtitle_color"
+    private const val KEY_BUFFER = "buffer_size"
+    private const val KEY_SLEEP = "sleep_timer"
+
     /** Aspect ratio options shown in Settings (STBEmu-style list). */
     val ASPECT_OPTIONS = arrayOf("Auto", "16:9", "16:10", "4:3", "2:1", "21:9")
 
@@ -96,5 +103,94 @@ object Prefs {
         val next = AUDIO_LANG_OPTIONS[(idx + 1) % AUDIO_LANG_OPTIONS.size].first
         prefs(context).edit().putString(KEY_AUDIO_LANG, next).apply()
         return next
+    }
+
+    // ------------------------------------------------- v5.0 player prefs
+
+    /** Playback speed options (labels); applied to ExoPlayer on init. */
+    val SPEED_OPTIONS = arrayOf("0.5x", "0.75x", "1x", "1.25x", "1.5x", "2x")
+    private val SPEED_VALUES = floatArrayOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+
+    /** Subtitle text size options. */
+    val SUB_SIZE_OPTIONS = arrayOf("Small", "Medium", "Large")
+
+    /** Subtitle text color options. */
+    val SUB_COLOR_OPTIONS = arrayOf("White", "Yellow")
+
+    /** Buffer size presets (maps to ExoPlayer buffer durations). */
+    val BUFFER_OPTIONS = arrayOf("Small", "Normal", "Large")
+
+    /** Sleep timer presets (minutes; 0 = off). */
+    val SLEEP_OPTIONS = arrayOf("Off", "15 min", "30 min", "60 min", "90 min")
+    private val SLEEP_MINUTES = intArrayOf(0, 15, 30, 60, 90)
+
+    private fun cycleOption(context: Context, key: String, options: Array<String>): String {
+        val cur = prefs(context).getString(key, options[0]) ?: options[0]
+        val idx = options.indexOf(cur).takeIf { it >= 0 } ?: 0
+        val next = options[(idx + 1) % options.size]
+        prefs(context).edit().putString(key, next).apply()
+        return next
+    }
+
+    private fun getOption(context: Context, key: String, options: Array<String>): String =
+        prefs(context).getString(key, options[0]) ?: options[0]
+
+    fun getPlaybackSpeedLabel(context: Context): String =
+        getOption(context, KEY_SPEED, SPEED_OPTIONS)
+
+    fun cyclePlaybackSpeed(context: Context): String =
+        cycleOption(context, KEY_SPEED, SPEED_OPTIONS)
+
+    fun playbackSpeedValue(context: Context): Float {
+        val idx = SPEED_OPTIONS.indexOf(getPlaybackSpeedLabel(context)).takeIf { it >= 0 } ?: 2
+        return SPEED_VALUES[idx]
+    }
+
+    fun getSubtitleSize(context: Context): String =
+        getOption(context, KEY_SUB_SIZE, SUB_SIZE_OPTIONS)
+
+    fun cycleSubtitleSize(context: Context): String =
+        cycleOption(context, KEY_SUB_SIZE, SUB_SIZE_OPTIONS)
+
+    /** Fractional subtitle text size for PlayerView.setFractionalTextSize. */
+    fun subtitleSizeFraction(context: Context): Float = when (getSubtitleSize(context)) {
+        "Small" -> 0.04f
+        "Large" -> 0.07f
+        else -> 0.0533f // Medium (ExoPlayer default)
+    }
+
+    fun getSubtitleColor(context: Context): String =
+        getOption(context, KEY_SUB_COLOR, SUB_COLOR_OPTIONS)
+
+    fun cycleSubtitleColor(context: Context): String =
+        cycleOption(context, KEY_SUB_COLOR, SUB_COLOR_OPTIONS)
+
+    fun subtitleColorInt(context: Context): Int = when (getSubtitleColor(context)) {
+        "Yellow" -> android.graphics.Color.YELLOW
+        else -> android.graphics.Color.WHITE
+    }
+
+    fun getBufferSize(context: Context): String =
+        getOption(context, KEY_BUFFER, BUFFER_OPTIONS)
+
+    fun cycleBufferSize(context: Context): String =
+        cycleOption(context, KEY_BUFFER, BUFFER_OPTIONS)
+
+    /** (minBufferMs, maxBufferMs) for DefaultLoadControl. */
+    fun bufferDurationsMs(context: Context): Pair<Int, Int> = when (getBufferSize(context)) {
+        "Small" -> 5_000 to 15_000
+        "Large" -> 30_000 to 120_000
+        else -> 15_000 to 50_000 // Normal
+    }
+
+    fun getSleepTimer(context: Context): String =
+        getOption(context, KEY_SLEEP, SLEEP_OPTIONS)
+
+    fun cycleSleepTimer(context: Context): String =
+        cycleOption(context, KEY_SLEEP, SLEEP_OPTIONS)
+
+    fun sleepTimerMinutes(context: Context): Int {
+        val idx = SLEEP_OPTIONS.indexOf(getSleepTimer(context)).takeIf { it >= 0 } ?: 0
+        return SLEEP_MINUTES[idx]
     }
 }
