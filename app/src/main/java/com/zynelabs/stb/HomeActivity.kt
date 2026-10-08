@@ -52,7 +52,12 @@ class HomeActivity : AppCompatActivity() {
 
     private enum class Section { LIVE_TV, MOVIES, SERIES }
 
-    private data class HomeRow(val title: String, val cards: List<CardItem>)
+    private data class HomeRow(
+        val title: String,
+        val cards: List<CardItem>,
+        /** v5.3: genre id for "see all in genre" → ChannelListActivity. */
+        val genreId: String? = null
+    )
 
     private sealed class CardItem {
         data class Live(val channel: Channel) : CardItem()
@@ -101,12 +106,19 @@ class HomeActivity : AppCompatActivity() {
         buildNav()
         binding.btnRetry.setOnClickListener { loadSection(forceRefresh = true) }
         binding.banner.setOnClickListener { playFeatured() }
-        binding.tvSeeAll.setOnClickListener {
-            binding.rowsRecycler.smoothScrollToPosition(0)
-            if (isTv) binding.rowsRecycler.requestFocus()
-        }
+        // v5.3: "See all" opens the FULL channel list (all pages, no cap).
+        binding.tvSeeAll.setOnClickListener { openFullList(null, null) }
 
         selectSection(Section.LIVE_TV)
+    }
+
+    /** v5.3: open ChannelListActivity for all channels or one genre. */
+    private fun openFullList(genreId: String?, genreTitle: String?) {
+        startActivity(
+            Intent(this, ChannelListActivity::class.java)
+                .putExtra(ChannelListActivity.EXTRA_GENRE_ID, genreId)
+                .putExtra(ChannelListActivity.EXTRA_GENRE_TITLE, genreTitle)
+        )
     }
 
     // ------------------------------------------------------------------ nav
@@ -327,14 +339,18 @@ class HomeActivity : AppCompatActivity() {
                 HomeRow(getString(R.string.all_channels), all.map { CardItem.Live(it) })
             )
         }
+        // v5.3: home previews stay fast (1 page/genre); tapping a row title
+        // or "See all" opens the FULL paginated list.
         genres.take(8).map { g ->
             async {
                 val chans = api.getChannelsPaginated(genreId = g.id, maxPages = 1)
-                g.title to chans
+                Triple(g.id, g.title, chans)
             }
         }.awaitAll()
-            .filter { it.second.isNotEmpty() }
-            .map { (title, chans) -> HomeRow(title, chans.map { CardItem.Live(it) }) }
+            .filter { it.third.isNotEmpty() }
+            .map { (id, title, chans) ->
+                HomeRow(title, chans.map { CardItem.Live(it) }, genreId = id)
+            }
     }
 
     private suspend fun loadVodRows(
@@ -410,6 +426,7 @@ class HomeActivity : AppCompatActivity() {
                 .putExtra(PlayerActivity.EXTRA_CMD, channel.cmd)
                 .putExtra(PlayerActivity.EXTRA_NAME, channel.name)
                 .putExtra(PlayerActivity.EXTRA_CMD_TYPE, PlayerActivity.TYPE_ITV)
+                .putExtra(PlayerActivity.EXTRA_GENRE_ID, channel.genreId)
         )
     }
 
@@ -458,6 +475,11 @@ class HomeActivity : AppCompatActivity() {
             val row = rows[position]
             holder.b.tvRowTitle.text = row.title
             holder.cardsAdapter.submit(row.cards)
+            // v5.3: tapping a genre row title opens its FULL channel list.
+            holder.b.tvRowTitle.setOnClickListener {
+                if (row.genreId != null) openFullList(row.genreId, row.title)
+            }
+            holder.b.tvRowTitle.isFocusable = row.genreId != null
         }
 
         override fun getItemCount(): Int = rows.size
