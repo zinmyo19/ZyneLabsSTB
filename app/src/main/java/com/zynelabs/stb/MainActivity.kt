@@ -177,7 +177,12 @@ class MainActivity : AppCompatActivity() {
             try {
                 StalkerSession.reset() // URL/MAC may have changed on the setup screen
                 val api = StalkerSession.get(this@MainActivity)
-                api.handshake()
+                // v4.6: no explicit handshake() — getProfile() authenticates
+                // (reusing the persisted session when valid: zero handshakes)
+                // and validates the session works. The old explicit
+                // handshake() + getProfile() burned an extra handshake per
+                // Connect tap, feeding the handshake spam that killed our
+                // portal session (v4.5 field test: Handshakes: 14).
                 val profile = api.getProfile() // validates the session works
                 if (!api.isMacRegistered(profile)) {
                     throw StalkerApi.StalkerException("MAC not registered on this portal")
