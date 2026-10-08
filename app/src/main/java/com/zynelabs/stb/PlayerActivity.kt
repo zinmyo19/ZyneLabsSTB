@@ -150,7 +150,10 @@ class PlayerActivity : AppCompatActivity() {
         setupDrawers()
 
         // Transport
+        // v5.5: prev / play-pause / next buttons (gold vectors).
         binding.btnPlayPause.setOnClickListener { togglePlayPause() }
+        binding.btnPrev.setOnClickListener { prevChannel(); bumpHideTimer() }
+        binding.btnNext.setOnClickListener { nextChannel(); bumpHideTimer() }
         binding.seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
                 if (fromUser) bumpHideTimer()
@@ -823,7 +826,10 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun updatePlayPauseIcon() {
-        binding.btnPlayPause.text = if (player?.isPlaying == true) "⏸" else "▶"
+        // v5.5: vector icons (the ⏸/▶ text glyphs may not exist on TV fonts).
+        binding.btnPlayPause.setImageResource(
+            if (player?.isPlaying == true) R.drawable.ic_pause else R.drawable.ic_play
+        )
     }
 
     private fun updateProgress() {
