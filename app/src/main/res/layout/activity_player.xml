@@ -22,6 +22,18 @@
         android:textSize="16sp"
         android:textStyle="bold" />
 
+    <!-- v5.0: audio track selection (Auto + available tracks) -->
+    <Button
+        android:id="@+id/btnTracks"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_margin="8dp"
+        android:alpha="0.85"
+        android:focusable="true"
+        android:text="@string/tracks_button"
+        android:textSize="12sp" />
+
     <ProgressBar
         android:id="@+id/progressBar"
         android:layout_width="wrap_content"
