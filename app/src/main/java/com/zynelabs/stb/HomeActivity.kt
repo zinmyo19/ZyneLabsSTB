@@ -54,7 +54,11 @@ class HomeActivity : AppCompatActivity() {
     /** Card content: either a live channel or a VOD category. */
     private sealed class CardItem {
         data class Live(val channel: Channel) : CardItem()
-        data class Vod(val category: StalkerApi.VodCategory, val mode: String) : CardItem()
+        data class Vod(
+            val category: StalkerApi.VodCategory,
+            val mode: String,
+            val vodType: String
+        ) : CardItem()
     }
 
     private data class NavEntry(
@@ -82,7 +86,7 @@ class HomeActivity : AppCompatActivity() {
         binding.rowsRecycler.adapter = rowsAdapter
 
         buildNav()
-        binding.btnRetry.setOnClickListener { loadSection() }
+        binding.btnRetry.setOnClickListener { loadSection(forceRefresh = true) }
         binding.banner.setOnClickListener { playFeatured() }
 
         selectSection(Section.LIVE_TV)
@@ -136,9 +140,11 @@ class HomeActivity : AppCompatActivity() {
     }
 
     private fun selectSection(s: Section) {
+        // v4.9: re-tapping the active section forces a refresh.
+        val force = (s == section && rowsAdapter.itemCount > 0)
         section = s
         highlightNav()
-        loadSection()
+        loadSection(force)
     }
 
     private fun highlightNav() {
@@ -152,11 +158,28 @@ class HomeActivity : AppCompatActivity() {
 
     // ------------------------------------------------------------------ loading
 
-    private fun loadSection() {
+    /**
+     * v4.9: cached-first loading. Shows cached rows instantly (even stale)
+     * so back-navigation from the player never spins; refreshes silently
+     * in the background when the cache is stale (>5 min) or [forceRefresh].
+     * The full-screen spinner only appears when there is nothing cached.
+     */
+    private fun loadSection(forceRefresh: Boolean = false) {
         loadJob?.cancel()
-        binding.progressBar.isVisible = true
         binding.errorBox.isVisible = false
-        binding.rowsRecycler.isVisible = false
+
+        val cachedRows = peekCachedRows()
+        if (!cachedRows.isNullOrEmpty()) {
+            rowsAdapter.submit(cachedRows)
+            binding.rowsRecycler.isVisible = true
+            updateBanner(cachedRows)
+            binding.progressBar.isVisible = false
+            if (!forceRefresh && isCacheFresh()) return
+            // Stale or forced: silent background refresh, no spinner.
+        } else {
+            binding.progressBar.isVisible = true
+            binding.rowsRecycler.isVisible = false
+        }
 
         loadJob = lifecycleScope.launch {
             try {
@@ -170,6 +193,7 @@ class HomeActivity : AppCompatActivity() {
                         api, VodBrowserActivity.MODE_SERIES, getString(R.string.nav_series)
                     )
                 }
+                cacheRows(rows)
                 rowsAdapter.submit(rows)
                 binding.rowsRecycler.isVisible = true
                 updateBanner(rows)
@@ -179,11 +203,98 @@ class HomeActivity : AppCompatActivity() {
                     binding.banner.requestFocus()
                 }
             } catch (e: Exception) {
-                showError(getString(R.string.error_load_failed, e.message.orEmpty()))
+                // v4.9: if we already show cached rows, don't replace them
+                // with an error — the data on screen is still usable.
+                if (rowsAdapter.itemCount == 0) {
+                    showError(getString(R.string.error_load_failed, e.message.orEmpty()))
+                }
             } finally {
                 binding.progressBar.isVisible = false
             }
         }
+    }
+
+    /** Cache key is per provider (portal+MAC) and section. */
+    private fun sectionCacheKey(): String {
+        val provider = (Prefs.getPortalUrl(this) + "|" + Prefs.getMac(this)).hashCode()
+            .toString(16)
+        val sec = when (section) {
+            Section.LIVE_TV -> "live"
+            Section.MOVIES -> "movies"
+            Section.SERIES -> "series"
+        }
+        return "rows_${provider}_$sec"
+    }
+
+    private fun peekCachedRows(): List<HomeRow>? {
+        return try {
+            ListCache.getStale(this, sectionCacheKey())?.let { rowsFromJson(it) }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun isCacheFresh(): Boolean =
+        ListCache.getFresh(this, sectionCacheKey()) != null
+
+    private fun cacheRows(rows: List<HomeRow>) {
+        try {
+            ListCache.put(this, sectionCacheKey(), rowsToJson(rows), persist = true)
+        } catch (e: Exception) {
+            // Caching is best-effort; never break the UI.
+        }
+    }
+
+    private fun rowsToJson(rows: List<HomeRow>): String {
+        val arr = org.json.JSONArray()
+        for (row in rows) {
+            val cards = org.json.JSONArray()
+            for (card in row.cards) {
+                when (card) {
+                    is CardItem.Live -> cards.put(
+                        org.json.JSONObject()
+                            .put("t", "live")
+                            .put("ch", ListCache.channelToJson(card.channel))
+                    )
+                    is CardItem.Vod -> cards.put(
+                        org.json.JSONObject()
+                            .put("t", "vod")
+                            .put("cat", ListCache.vodCategoryToJson(card.category))
+                            .put("mode", card.mode)
+                            .put("vodType", card.vodType)
+                    )
+                }
+            }
+            arr.put(org.json.JSONObject().put("title", row.title).put("cards", cards))
+        }
+        return arr.toString()
+    }
+
+    private fun rowsFromJson(json: String): List<HomeRow> {
+        val out = ArrayList<HomeRow>()
+        val arr = org.json.JSONArray(json)
+        for (i in 0 until arr.length()) {
+            val ro = arr.getJSONObject(i)
+            val cards = ArrayList<CardItem>()
+            val ca = ro.getJSONArray("cards")
+            for (j in 0 until ca.length()) {
+                val co = ca.getJSONObject(j)
+                when (co.optString("t")) {
+                    "live" -> cards.add(
+                        CardItem.Live(ListCache.channelFromJson(co.getJSONObject("ch")))
+                    )
+                    "vod" -> cards.add(
+                        CardItem.Vod(
+                            ListCache.vodCategoryFromJson(co.getJSONObject("cat")),
+                            co.optString("mode"),
+                            co.optString("vodType", "vod")
+                        )
+                    )
+                }
+            }
+            out.add(HomeRow(ro.optString("title"), cards))
+        }
+        return out
     }
 
     /** Genre rows, one page (14) of channels each, fetched in parallel. */
@@ -205,14 +316,42 @@ class HomeActivity : AppCompatActivity() {
             .map { (title, chans) -> HomeRow(title, chans.map { CardItem.Live(it) }) }
     }
 
+    /**
+     * v4.9: series tries the portal's "series" module first, falling back
+     * to title-filtered VOD categories (many panels keep series under VOD).
+     */
     private suspend fun loadVodRows(
         api: StalkerApi,
         mode: String,
         title: String
     ): List<HomeRow> {
-        val cats = api.getVodCategories()
+        // v4.9: vodType tracks the module that ACTUALLY served the
+        // categories, so the drill-down browser queries the same one.
+        var vodType = "vod"
+        val cats: List<StalkerApi.VodCategory> = if (mode == VodBrowserActivity.MODE_SERIES) {
+            val series = api.getVodCategories("series")
+            if (series.isNotEmpty()) {
+                vodType = "series"
+                series
+            } else {
+                api.getVodCategories("vod").filter { looksLikeSeries(it.title) }
+            }
+        } else {
+            api.getVodCategories("vod")
+        }
         if (cats.isEmpty()) return emptyList()
-        return listOf(HomeRow(title, cats.map { CardItem.Vod(it, mode) }))
+        return listOf(
+            HomeRow(
+                title,
+                cats.map { CardItem.Vod(it, mode, vodType) }
+            )
+        )
+    }
+
+    private fun looksLikeSeries(title: String): Boolean {
+        val t = title.lowercase()
+        return "series" in t || "serial" in t || "show" in t ||
+            "season" in t || "episode" in t
     }
 
     private fun updateBanner(rows: List<HomeRow>) {
@@ -268,6 +407,7 @@ class HomeActivity : AppCompatActivity() {
             is CardItem.Vod -> startActivity(
                 Intent(this, VodBrowserActivity::class.java)
                     .putExtra(VodBrowserActivity.EXTRA_MODE, card.mode)
+                    .putExtra(VodBrowserActivity.EXTRA_VOD_TYPE, card.vodType)
                     .putExtra(VodBrowserActivity.EXTRA_CATEGORY_ID, card.category.id)
                     .putExtra(VodBrowserActivity.EXTRA_CATEGORY_TITLE, card.category.title)
             )
@@ -342,14 +482,36 @@ class HomeActivity : AppCompatActivity() {
                         holder.itemView.context.getString(R.string.unknown_channel)
                     }
                     holder.b.tvName.text = name
+                    // v4.9: channel logo poster; letter tile is the fallback.
+                    holder.b.tvLogoLetter.visibility = View.VISIBLE
                     holder.b.tvLogoLetter.text =
                         name.trim().firstOrNull()?.uppercase() ?: "?"
+                    holder.b.ivPoster.visibility = View.GONE
+                    ImageLoader.load(
+                        c.channel.logo.ifBlank { null },
+                        holder.b.ivPoster,
+                        onFail = {
+                            holder.b.ivPoster.visibility = View.GONE
+                            holder.b.tvLogoLetter.visibility = View.VISIBLE
+                        },
+                        onSuccess = {
+                            holder.b.tvLogoLetter.visibility = View.GONE
+                        }
+                    )
                 }
                 is CardItem.Vod -> {
                     holder.b.tvName.text = c.category.title
+                    holder.b.tvLogoLetter.visibility = View.VISIBLE
                     holder.b.tvLogoLetter.text = "\uD83D\uDCC1"
+                    holder.b.ivPoster.visibility = View.GONE
+                    ImageLoader.cancel(holder.b.ivPoster)
                 }
             }
+        }
+
+        override fun onViewRecycled(holder: CardVH) {
+            super.onViewRecycled(holder)
+            ImageLoader.cancel(holder.b.ivPoster)
         }
 
         override fun getItemCount(): Int = cards.size
