@@ -125,6 +125,17 @@
             android:contentDescription="@string/channels_button"
             android:focusable="true"
             android:src="@drawable/ic_menu" />
+
+        <!-- v5.5: screen lock (FlowPlay) — blocks accidental touches. -->
+        <ImageButton
+            android:id="@+id/btnLock"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/nav_item_selector"
+            android:contentDescription="@string/lock_button"
+            android:focusable="true"
+            android:src="@drawable/ic_lock" />
     </LinearLayout>
 
     <!-- ===== Info box (with controls) ===== -->
@@ -203,12 +214,24 @@
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <!-- v5.5: prev / play-pause / next (gold vectors, D-pad focusable) -->
+            <!-- v5.5: full FlowPlay transport — rewind, prev, play/pause,
+                 next, forward, aspect, volume (gold vectors, D-pad focusable).
+                 Rewind/forward show for VOD only. -->
+            <ImageButton
+                android:id="@+id/btnRewind"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@drawable/nav_item_selector"
+                android:contentDescription="@string/rewind_10s"
+                android:focusable="true"
+                android:src="@drawable/ic_rewind"
+                android:visibility="gone" />
+
             <ImageButton
                 android:id="@+id/btnPrev"
-                android:layout_width="52dp"
-                android:layout_height="52dp"
-                android:layout_marginEnd="4dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="4dp"
                 android:background="@drawable/nav_item_selector"
                 android:contentDescription="@string/prev_channel"
                 android:focusable="true"
@@ -216,8 +239,9 @@
 
             <ImageButton
                 android:id="@+id/btnPlayPause"
-                android:layout_width="52dp"
-                android:layout_height="52dp"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_marginStart="4dp"
                 android:background="@drawable/nav_item_selector"
                 android:contentDescription="@string/play_pause"
                 android:focusable="true"
@@ -225,13 +249,44 @@
 
             <ImageButton
                 android:id="@+id/btnNext"
-                android:layout_width="52dp"
-                android:layout_height="52dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
                 android:layout_marginStart="4dp"
                 android:background="@drawable/nav_item_selector"
                 android:contentDescription="@string/next_channel"
                 android:focusable="true"
                 android:src="@drawable/ic_next" />
+
+            <ImageButton
+                android:id="@+id/btnForward"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="4dp"
+                android:background="@drawable/nav_item_selector"
+                android:contentDescription="@string/forward_10s"
+                android:focusable="true"
+                android:src="@drawable/ic_forward"
+                android:visibility="gone" />
+
+            <ImageButton
+                android:id="@+id/btnAspectTransport"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="4dp"
+                android:background="@drawable/nav_item_selector"
+                android:contentDescription="@string/aspect_button"
+                android:focusable="true"
+                android:src="@drawable/ic_aspect" />
+
+            <ImageButton
+                android:id="@+id/btnVolume"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="4dp"
+                android:background="@drawable/nav_item_selector"
+                android:contentDescription="@string/volume_button"
+                android:focusable="true"
+                android:src="@drawable/ic_volume" />
 
             <TextView
                 android:id="@+id/tvPosition"
@@ -420,6 +475,32 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:layout_marginTop="8dp" />
+    </LinearLayout>
+
+    <!-- ===== v5.5: screen-lock overlay (FlowPlay) — tap to unlock ===== -->
+    <LinearLayout
+        android:id="@+id/lockOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#40000000"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:src="@drawable/ic_lock" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/unlock_hint"
+            android:textColor="@color/text_primary"
+            android:textSize="16sp" />
     </LinearLayout>
 
 </FrameLayout>
