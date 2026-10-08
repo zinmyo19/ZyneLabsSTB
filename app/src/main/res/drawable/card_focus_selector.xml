@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Channel card background: dark normally, teal ring when focused (D-pad). -->
+<!-- v5.2: channel card — thin gold border normally, teal glow ring when focused (D-pad). -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_focused="true">
         <shape android:shape="rectangle">
@@ -18,6 +18,7 @@
     <item>
         <shape android:shape="rectangle">
             <solid android:color="@color/surface" />
+            <stroke android:width="1dp" android:color="@color/gold_dark" />
             <corners android:radius="12dp" />
         </shape>
     </item>
