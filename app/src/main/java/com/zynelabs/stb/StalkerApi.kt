@@ -278,6 +278,15 @@ class StalkerApi(
     @Volatile var debugHandshakeCount: Int = 0
         private set
 
+    /**
+     * v4.5: which auth flow the last [getProfile] used. "A" = v2.4's proven
+     * {portal}/portal.php + stb/get_profile (tried FIRST); "B" = v4.x
+     * {host}/server/load.php + get_ordered_list ladder (fallback). Shown
+     * in Copy Debug Info so a failure can be attributed to a flow.
+     */
+    @Volatile var debugFlow: String = "A"
+        private set
+
     /** v3.4: one-line redacted header dump for Copy Debug Info.
      * v4.4: Cookie header values are name-shown/value-truncated (the token
      * cookie for TOKEN_COOKIE portals must not leak in full). */
@@ -372,6 +381,7 @@ class StalkerApi(
         sb.appendLine("API base: $apiBase")
         sb.appendLine("MAC: $mac")
         sb.appendLine("Auth method: $authMethod")
+        sb.appendLine("Flow: $debugFlow")
         sb.appendLine("Handshakes: $debugHandshakeCount")
         sb.appendLine()
         sb.appendLine("Handshake URL:")
@@ -386,7 +396,10 @@ class StalkerApi(
         sb.appendLine("Handshake response headers (500 chars):")
         sb.appendLine(debugHandshakeRespHeaders ?: "(none yet)")
         sb.appendLine()
-        sb.appendLine("Channel Validation (first itv/get_ordered_list attempt):")
+        // v4.5: label reflects which flow produced the validation call —
+        // Flow A validates via stb/get_profile, Flow B via itv/get_ordered_list.
+        val validationLabel = if (debugFlow == "A") "stb/get_profile" else "itv/get_ordered_list"
+        sb.appendLine("Validation (Flow $debugFlow, first $validationLabel attempt):")
         sb.appendLine("URL: ${debugProfileUrl ?: "(none yet)"}")
         sb.appendLine("Headers: ${debugProfileHeaders ?: "(none yet)"}")
         sb.appendLine("HTTP code: ${debugProfileHttpCode?.toString() ?: "(none yet)"}")
@@ -582,7 +595,13 @@ class StalkerApi(
             // no longer useful. handshake() resets these fields, so Copy
             // Debug Info always shows the CURRENT session's attempt.
             // (v3.6–v3.7 captured get_profile; v4.1 supersedes that.)
-            if (type == "itv" && action == "get_ordered_list" && debugProfileUrl == null) {
+            // v4.5: Flow A validates via stb/get_profile (portal.php),
+            // Flow B via itv/get_ordered_list — capture whichever flow
+            // is active so Copy Debug Info shows the real validation call.
+            val isValidationCall =
+                (debugFlow == "A" && type == "stb" && action == "get_profile") ||
+                    (debugFlow == "B" && type == "itv" && action == "get_ordered_list")
+            if (isValidationCall && debugProfileUrl == null) {
                 debugProfileUrl = url.toString()
                 debugProfileHeaders = debugHeaderDump(headers)
                 debugProfileHttpCode = code
@@ -755,7 +774,15 @@ class StalkerApi(
      * so we can verify token parsing on panels with non-standard shapes.
      * @return the new token
      */
-    suspend fun handshake(): String {
+    suspend fun handshake(): String = handshakeOn(apiBaseCandidates())
+
+    /**
+     * v4.5: handshake against an explicit candidate list. [handshake]
+     * keeps the v3.9 behavior (try {host}/server/load.php, then
+     * {portal}/load.php, then {portal}/portal.php); Flow A passes a
+     * single-element list ({portal}/portal.php) to pin the v2.4 endpoint.
+     */
+    private suspend fun handshakeOn(candidates: List<String>): String {
         token = null
         // v4.2: count every handshake attempt (see debugHandshakeCount).
         debugHandshakeCount++
@@ -783,7 +810,7 @@ class StalkerApi(
         // rethrows immediately. apiBase keeps the working endpoint for all
         // subsequent calls.
         var lastError: StalkerException? = null
-        for (candidate in apiBaseCandidates()) {
+        for (candidate in candidates) {
             apiBase = candidate
             try {
                 debugHandshakeUrl =
@@ -1084,44 +1111,107 @@ class StalkerApi(
     // -------------------------------------------------------------- actions
 
     /**
+     * v4.5 Flow A: v2.4's proven auth — {portal}/portal.php, Bearer-only,
+     * validated by a REAL stb/get_profile (non-blank id = registered).
+     * v2.4 worked on wafasiad.com with exactly this shape; v3.8/v4.1
+     * replaced it with load.php + get_ordered_list and wafasiad regressed
+     * ("BEARER" selected but no channels). Bounded: up to 2 handshakes.
+     *
+     * @return the real profile on success, null when this flow yields
+     *         nothing (the caller falls back to Flow B). Never throws
+     *         "MAC not registered" — that verdict comes only after BOTH
+     *         flows fail.
+     */
+    private suspend fun tryFlowA(): JSONObject? {
+        val portalPhp = "$baseUrl/portal.php"
+        repeat(2) { attempt ->
+            try {
+                // v2.4 style: Bearer only — no auth-method ladder here.
+                authMethod = AuthMethod.BEARER
+                handshakeMutex.withLock { handshakeOn(listOf(portalPhp)) }
+                val js = jsPayload(get("stb", "get_profile"))
+                val id = js.optString("id")
+                if (id.isNotBlank()) {
+                    android.util.Log.i(
+                        "StalkerApi",
+                        "tryFlowA: portal.php + get_profile OK, " +
+                            "id=${id.take(16)} (attempt ${attempt + 1}/2)"
+                    )
+                    return js
+                }
+                android.util.Log.w(
+                    "StalkerApi",
+                    "tryFlowA: get_profile blank id (attempt ${attempt + 1}/2)"
+                )
+            } catch (e: Exception) {
+                android.util.Log.w(
+                    "StalkerApi",
+                    "tryFlowA: attempt ${attempt + 1}/2 failed: " +
+                        "${(e.message ?: e.javaClass.simpleName).take(80)}"
+                )
+            }
+        }
+        android.util.Log.w("StalkerApi", "tryFlowA: no profile, falling back to Flow B")
+        return null
+    }
+
+    /**
      * Returns the raw profile JSON object of the box.
      *
-     * v4.1: validates via itv/get_ordered_list page 1 instead of
-     * stb/get_profile. Dominic's packet capture proved OTT Navigator NEVER
-     * calls stb/get_profile — its flow is handshake → get_ordered_list
-     * directly. bingeiptv.xyz returns EMPTY for get_profile even with the
-     * v4.0 packet-capture-verified MAG format, while get_ordered_list
-     * works. Real channel data ({"js":{"data":[... with >= 1 item) is the
-     * proof the session works; a synthetic profile (id = the MAC) is
-     * returned so [isMacRegistered] keeps working for callers.
+     * v4.5: DUAL-FLOW auth (simplification, not more complexity).
+     * Flow A (tried FIRST): v2.4's proven {portal}/portal.php +
+     * stb/get_profile + Bearer — returned a real 5.6KB profile on
+     * wafasiad.com. Flow B (fallback): v4.4's {host}/server/load.php +
+     * get_ordered_list ladder (packet-capture-verified OTT shape).
+     * Different portals need genuinely different flows; the v3.9
+     * api-base fallback only varied the PATH, not the auth flow.
+     * "MAC not registered" fires only when BOTH flows fail.
      *
-     * Graceful degradation: when the portal's get_profile is broken but
-     * channels load, the session is valid — profile/account detail screens
-     * show MAC + portal instead of crashing.
+     * v4.1 note (Flow B): Dominic's packet capture proved OTT Navigator
+     * NEVER calls stb/get_profile — its flow is handshake →
+     * get_ordered_list directly. bingeiptv.xyz returns EMPTY for
+     * get_profile even with the v4.0 packet-capture-verified MAG format,
+     * while get_ordered_list works. Real channel data ({"js":{"data":[...
+     * with >= 1 item) is the proof the session works; a synthetic
+     * profile (id = the MAC) is returned so [isMacRegistered] keeps
+     * working for callers.
      */
-    suspend fun getProfile(): JSONObject = withSession {
-        val js = jsPayload(get("itv", "get_ordered_list", mapOf("p" to "1")))
-        val data = js.optJSONArray("data")
-        // v2.5: no channel data means the portal doesn't associate this
-        // session with a user — the token is dead OR the MAC isn't
-        // registered. Throw the marker so withSession re-handshakes and
-        // retries (then walks the auth-method ladder) before concluding
-        // the MAC is unregistered.
-        if (data == null || data.length() == 0) {
-            throw StalkerException(
-                "Portal returned no channel data",
-                isAuthFailure = true
+    suspend fun getProfile(): JSONObject {
+        // Flow A first — v2.4's proven portal.php + get_profile.
+        debugFlow = "A"
+        tryFlowA()?.let { return it }
+        // Flow A yielded nothing — reset session state for Flow B.
+        // (tryFlowA leaves apiBase pinned to portal.php and possibly a
+        // dead token; Flow B must start clean.)
+        debugFlow = "B"
+        token = null
+        lastHandshakeToken = null
+        authMethod = AuthMethod.BEARER
+        apiBase = "$hostBase/server/load.php"
+        return withSession {
+            val js = jsPayload(get("itv", "get_ordered_list", mapOf("p" to "1")))
+            val data = js.optJSONArray("data")
+            // v2.5: no channel data means the portal doesn't associate this
+            // session with a user — the token is dead OR the MAC isn't
+            // registered. Throw the marker so withSession re-handshakes and
+            // retries (then walks the auth-method ladder) before concluding
+            // the MAC is unregistered.
+            if (data == null || data.length() == 0) {
+                throw StalkerException(
+                    "Portal returned no channel data",
+                    isAuthFailure = true
+                )
+            }
+            android.util.Log.i(
+                "StalkerApi",
+                "getProfile: session valid, channel page 1 has ${data.length()} items"
             )
+            // Synthetic profile — the portal's stb/get_profile is unreliable
+            // (returns empty on some panels), but channel data proves the MAC
+            // is registered. Callers (MainActivity connect flow) check
+            // isMacRegistered(), which passes on this non-blank id.
+            JSONObject().put("id", mac).put("mac", mac)
         }
-        android.util.Log.i(
-            "StalkerApi",
-            "getProfile: session valid, channel page 1 has ${data.length()} items"
-        )
-        // Synthetic profile — the portal's stb/get_profile is unreliable
-        // (returns empty on some panels), but channel data proves the MAC
-        // is registered. Callers (MainActivity connect flow) check
-        // isMacRegistered(), which passes on this non-blank id.
-        JSONObject().put("id", mac).put("mac", mac)
     }
 
     /**
