@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v5.5: gold padlock icon (screen lock). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#D4AF37"
+        android:strokeWidth="2"
+        android:pathData="M8,11 V8 a4,4 0 0 1 8,0 v3" />
+    <path
+        android:fillColor="#D4AF37"
+        android:pathData="M6,11 h12 v9 h-12 z" />
+    <path
+        android:fillColor="#0A0F14"
+        android:pathData="M12,14.5 a1.5,1.5 0 0 1 0.75,2.8 v1.2 h-1.5 v-1.2 a1.5,1.5 0 0 1 0.75,-2.8 z" />
+</vector>
