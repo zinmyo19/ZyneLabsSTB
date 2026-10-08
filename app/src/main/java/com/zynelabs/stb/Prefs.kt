@@ -193,4 +193,27 @@ object Prefs {
         val idx = SLEEP_OPTIONS.indexOf(getSleepTimer(context)).takeIf { it >= 0 } ?: 0
         return SLEEP_MINUTES[idx]
     }
+
+    // ------------------------------------------------------------ v5.4 favorites
+
+    private const val KEY_FAVORITES = "favorites"
+
+    /** Favorite channel IDs, persisted as a string set. */
+    fun getFavorites(context: Context): Set<String> =
+        prefs(context).getStringSet(KEY_FAVORITES, emptySet()) ?: emptySet()
+
+    fun isFavorite(context: Context, channelId: String): Boolean =
+        getFavorites(context).contains(channelId)
+
+    /** Toggles; returns the new state (true = now a favorite). */
+    fun toggleFavorite(context: Context, channelId: String): Boolean {
+        val set = getFavorites(context).toMutableSet()
+        val nowFav = if (set.contains(channelId)) {
+            set.remove(channelId); false
+        } else {
+            set.add(channelId); true
+        }
+        prefs(context).edit().putStringSet(KEY_FAVORITES, set).apply()
+        return nowFav
+    }
 }
