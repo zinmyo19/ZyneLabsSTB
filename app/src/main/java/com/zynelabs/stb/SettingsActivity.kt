@@ -29,6 +29,7 @@ class SettingsActivity : AppCompatActivity() {
         private const val ID_PORTAL = "portal"
         private const val ID_PROBE = "probe"
         private const val ID_DEBUG = "debug"
+        private const val ID_RESET = "reset"
         private const val ID_VERSION = "version"
     }
 
@@ -90,6 +91,11 @@ class SettingsActivity : AppCompatActivity() {
                 ""
             ),
             RowItem(
+                ID_RESET,
+                getString(R.string.reset_connection_row),
+                ""
+            ),
+            RowItem(
                 ID_VERSION,
                 getString(R.string.setting_version),
                 BuildConfig.VERSION_NAME
@@ -122,6 +128,15 @@ class SettingsActivity : AppCompatActivity() {
                 val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 cm.setPrimaryClip(ClipData.newPlainText("ZyneLabs STB debug", info))
                 Toast.makeText(this, "Debug info copied", Toast.LENGTH_SHORT).show()
+                return
+            }
+            ID_RESET -> {
+                // v4.7: manual escape hatch — clears the cached session
+                // (memory + prefs) AND the handshake timestamps, so the
+                // next Connect starts completely fresh (no waiting out
+                // a poisoned rate-limit cap).
+                StalkerSession.get(this).resetConnection()
+                Toast.makeText(this, "Connection reset", Toast.LENGTH_SHORT).show()
                 return
             }
             else -> return
