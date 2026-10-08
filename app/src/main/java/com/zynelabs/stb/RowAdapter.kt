@@ -55,7 +55,7 @@ class RowAdapter(
             if (item.header) {
                 binding.root.isFocusable = false
                 binding.root.isClickable = false
-                binding.tvTitle.setTextColor(0xFF00E5CC.toInt())
+                binding.tvTitle.setTextColor(0xFFD4AF37.toInt())
                 binding.tvTitle.textSize = 14f
                 binding.tvTitle.typeface = android.graphics.Typeface.DEFAULT_BOLD
             } else {
