@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v5.2: gold calendar icon (Imperial) — replaces emoji. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#D4AF37"
+        android:pathData="M5,6 h14 a2,2 0 0 1 2,2 v11 a2,2 0 0 1 -2,2 H5 a2,2 0 0 1 -2,-2 V8 a2,2 0 0 1 2,-2 z" />
+    <path
+        android:strokeColor="#D4AF37"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M8,3.5 v4 M16,3.5 v4" />
+    <path
+        android:fillColor="#0A0F14"
+        android:pathData="M7,13 h2.4 v2.4 H7 z M10.8,13 h2.4 v2.4 h-2.4 z M14.6,13 h2.4 v2.4 h-2.4 z M7,16.8 h2.4 v2.4 H7 z M10.8,16.8 h2.4 v2.4 h-2.4 z" />
+</vector>
