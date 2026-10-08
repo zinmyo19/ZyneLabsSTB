@@ -1524,7 +1524,12 @@ class StalkerApi(
         val rawAll = ArrayList<Channel>()
         var page = 1
         var done = false
-        val batchSize = 6
+        // v5.6: REAL genre root cause — bingeiptv returns EMPTY for
+        // CONCURRENT genre-filtered get_ordered_list requests. Home rows
+        // (maxPages=1, single request) worked; Categories drill-down
+        // (batches of 6) got empty on every page. Genre queries now go
+        // strictly sequential (batchSize=1); unfiltered keeps 6-way.
+        val batchSize = if (genreId != null) 1 else 6
         while (!done && page <= maxPages) {
             val batchEnd = minOf(page + batchSize, maxPages + 1)
             val batch = (page until batchEnd).toList()
@@ -1532,7 +1537,17 @@ class StalkerApi(
             val results = batch.map { p ->
                 async { fetchChannelPage(p, genreId) }
             }.awaitAll()
-            for (res in results) {
+            // v5.6: page-1 retry — a transient empty (portal throttle)
+            // on the very first page used to kill the whole list.
+            // Retry once after a short pause before concluding empty.
+            var finalResults = results
+            if (page == 1 && results.all { it.raw.isEmpty() }) {
+                kotlinx.coroutines.delay(1200)
+                finalResults = batch.map { p ->
+                    async { fetchChannelPage(p, genreId) }
+                }.awaitAll()
+            }
+            for (res in finalResults) {
                 filteredAll.addAll(res.filtered)
                 rawAll.addAll(res.raw)
                 // v5.5: terminate on RAW empty only — a fully-filtered
@@ -1550,6 +1565,20 @@ class StalkerApi(
         // back to the raw list instead of showing "No channels found".
         val result = if (filteredAll.isNotEmpty()) filteredAll else rawAll
         result.sortedBy { it.number.toIntOrNull() ?: Int.MAX_VALUE }
+    }
+
+    /**
+     * v5.6: real total channel count — reads `total_items` from page 1 of
+     * get_ordered_list (ONE request). Home banner shows this instead of
+     * the partial "98+" preview count. Returns -1 when unavailable.
+     */
+    suspend fun getTotalChannelCount(): Int = withSession {
+        try {
+            val js = jsPayload(get("itv", "get_ordered_list", mapOf("p" to "1")))
+            js.optInt("total_items", -1)
+        } catch (_: Exception) {
+            -1
+        }
     }
 
     /**
