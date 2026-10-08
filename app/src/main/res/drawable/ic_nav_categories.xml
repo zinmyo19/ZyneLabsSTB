@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v5.4: gold grid/folder icon for Categories (Imperial) — replaces emoji. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#D4AF37"
+        android:pathData="M4,4 h7 v7 H4 z M13,4 h7 v7 h-7 z M4,13 h7 v7 H4 z M13,13 h7 v7 h-7 z" />
+</vector>
