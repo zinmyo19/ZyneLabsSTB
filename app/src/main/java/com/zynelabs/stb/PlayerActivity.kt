@@ -722,8 +722,9 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun updateRecordButton() {
         // Red dot pulses while recording; gold otherwise.
-        binding.btnRecord.textColor =
+        binding.btnRecord.setTextColor(
             if (isRecording) Color.RED else getColor(R.color.gold)
+        )
     }
 
     // ------------------------------------------------------------ v5.4 FlowPlay extras
