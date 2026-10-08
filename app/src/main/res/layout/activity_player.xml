@@ -3,6 +3,7 @@
      transparent floating top bar, info box, bottom transport with seek bar,
      inline settings strip. Fully D-pad navigable, auto-hides. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/playerRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
