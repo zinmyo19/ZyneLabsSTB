@@ -11,8 +11,13 @@ import com.zynelabs.stb.databinding.ItemRowBinding
  * Generic single-line row adapter (title + optional value).
  * Rows are focusable for D-pad; OK/click triggers [onClick].
  */
-/** Item for [RowAdapter]: stable id + title + optional trailing value. */
-data class RowItem(val id: String, val title: String, val value: String = "")
+/** Item for [RowAdapter]: stable id + title + optional trailing value + optional poster. */
+data class RowItem(
+    val id: String,
+    val title: String,
+    val value: String = "",
+    val posterUrl: String = ""
+)
 
 class RowAdapter(
     private val onClick: (RowItem) -> Unit
@@ -44,6 +49,21 @@ class RowAdapter(
         fun bind(item: RowItem) {
             binding.tvTitle.text = item.title
             binding.tvValue.text = item.value
+            // v4.9: poster thumbnail (VOD items); hidden when absent.
+            if (item.posterUrl.isNotBlank()) {
+                binding.ivThumb.visibility = android.view.View.VISIBLE
+                ImageLoader.load(item.posterUrl, binding.ivThumb, onFail = {
+                    binding.ivThumb.visibility = android.view.View.GONE
+                })
+            } else {
+                ImageLoader.cancel(binding.ivThumb)
+                binding.ivThumb.visibility = android.view.View.GONE
+            }
+        }
+
+        /** v4.9: cancel any pending poster load when the view is recycled. */
+        fun recycle() {
+            ImageLoader.cancel(binding.ivThumb)
         }
     }
 
@@ -56,5 +76,10 @@ class RowAdapter(
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         holder.bind(getItem(position))
+    }
+
+    override fun onViewRecycled(holder: ViewHolder) {
+        super.onViewRecycled(holder)
+        holder.recycle()
     }
 }
