@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v5.2: gold gear icon (Imperial) — replaces emoji. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <group android:pivotX="12" android:pivotY="12">
+        <path android:fillColor="#D4AF37" android:pathData="M10.8,2 h2.4 v3.4 h-2.4 z" />
+        <group android:rotation="45" android:pivotX="12" android:pivotY="12">
+            <path android:fillColor="#D4AF37" android:pathData="M10.8,2 h2.4 v3.4 h-2.4 z" />
+        </group>
+        <group android:rotation="90" android:pivotX="12" android:pivotY="12">
+            <path android:fillColor="#D4AF37" android:pathData="M10.8,2 h2.4 v3.4 h-2.4 z" />
+        </group>
+        <group android:rotation="135" android:pivotX="12" android:pivotY="12">
+            <path android:fillColor="#D4AF37" android:pathData="M10.8,2 h2.4 v3.4 h-2.4 z" />
+        </group>
+        <group android:rotation="180" android:pivotX="12" android:pivotY="12">
+            <path android:fillColor="#D4AF37" android:pathData="M10.8,2 h2.4 v3.4 h-2.4 z" />
+        </group>
+        <group android:rotation="225" android:pivotX="12" android:pivotY="12">
+            <path android:fillColor="#D4AF37" android:pathData="M10.8,2 h2.4 v3.4 h-2.4 z" />
+        </group>
+        <group android:rotation="270" android:pivotX="12" android:pivotY="12">
+            <path android:fillColor="#D4AF37" android:pathData="M10.8,2 h2.4 v3.4 h-2.4 z" />
+        </group>
+        <group android:rotation="315" android:pivotX="12" android:pivotY="12">
+            <path android:fillColor="#D4AF37" android:pathData="M10.8,2 h2.4 v3.4 h-2.4 z" />
+        </group>
+    </group>
+    <path
+        android:fillColor="#D4AF37"
+        android:fillType="evenOdd"
+        android:pathData="M12,7.5 a4.5,4.5 0 1 0 0,9 a4.5,4.5 0 1 0 0,-9 z M12,10.5 a1.5,1.5 0 1 0 0,3 a1.5,1.5 0 1 0 0,-3 z" />
+</vector>
