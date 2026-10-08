@@ -108,8 +108,82 @@ class HomeActivity : AppCompatActivity() {
         binding.banner.setOnClickListener { playFeatured() }
         // v5.3: "See all" opens the FULL channel list (all pages, no cap).
         binding.tvSeeAll.setOnClickListener { openFullList(null, null) }
+        // v5.6: provider switcher chip in header.
+        binding.btnProvider.setOnClickListener { showProviderDialog() }
+        refreshProviderChip()
 
         selectSection(Section.LIVE_TV)
+    }
+
+    /** v5.6: refresh provider chip when returning from Add Provider. */
+    override fun onResume() {
+        super.onResume()
+        refreshProviderChip()
+    }
+
+    /** v5.6: show the active provider host on the header chip. */
+    private fun refreshProviderChip() {
+        val p = ProviderStore.getActive(this)
+        binding.btnProvider.text = p?.let { ProviderStore.displayName(it) } ?: "—"
+    }
+
+    /**
+     * v5.6: provider dialog — switch active provider, add new, delete.
+     * D-pad navigable list. Switching reloads home on the new portal.
+     */
+    private fun showProviderDialog() {
+        val providers = ProviderStore.list(this).toMutableList()
+        val activeId = ProviderStore.getActiveId(this)
+        val items = providers.map {
+            (if (it.id == activeId) "● " else "○ ") + ProviderStore.displayName(it)
+        }.toMutableList()
+        items.add("+ Add provider…")
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Provider")
+            .setItems(items.toTypedArray()) { _, which ->
+                if (which < providers.size) {
+                    val picked = providers[which]
+                    if (picked.id != activeId) {
+                        ProviderStore.setActive(this, picked.id)
+                        ProviderStore.applyActive(this)
+                        ListCache.invalidateAll()
+                        refreshProviderChip()
+                        binding.tvPortalInfo.text =
+                            getString(R.string.home_portal_info, Prefs.getMac(this))
+                        loadSection(forceRefresh = true)
+                    }
+                } else {
+                    startActivity(
+                        android.content.Intent(this, AddProviderActivity::class.java)
+                    )
+                }
+            }
+            .setNeutralButton("Delete…") { _, _ -> showDeleteProviderDialog(providers) }
+            .show()
+    }
+
+    /** v5.6: delete-provider picker. */
+    private fun showDeleteProviderDialog(providers: List<Provider>) {
+        if (providers.isEmpty()) return
+        val items = providers.map { ProviderStore.displayName(it) }.toTypedArray()
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Delete provider")
+            .setItems(items) { _, which ->
+                val doomed = providers[which]
+                ProviderStore.delete(this, doomed.id)
+                if (ProviderStore.getActiveId(this) == doomed.id) {
+                    val next = ProviderStore.list(this).firstOrNull()
+                    if (next != null) {
+                        ProviderStore.setActive(this, next.id)
+                    }
+                }
+                ProviderStore.applyActive(this)
+                ListCache.invalidateAll()
+                refreshProviderChip()
+                loadSection(forceRefresh = true)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     /** v5.3: open ChannelListActivity for all channels or one genre. */
@@ -399,6 +473,21 @@ class HomeActivity : AppCompatActivity() {
             }
             binding.tvBannerSubtitle.text = getString(R.string.subtitle_live_tv, total)
             binding.tvBannerMeta.text = getString(R.string.banner_meta_live, total)
+            // v5.6: replace the partial preview count with the REAL total
+            // (one cheap total_items read) once it arrives.
+            lifecycleScope.launch {
+                try {
+                    val api = StalkerSession.get(this@HomeActivity)
+                    val real = api.getTotalChannelCount()
+                    if (real > 0) {
+                        binding.tvBannerSubtitle.text =
+                            getString(R.string.subtitle_live_tv, real)
+                        binding.tvBannerMeta.text =
+                            getString(R.string.banner_meta_live, real)
+                    }
+                } catch (_: Exception) {
+                }
+            }
         } else {
             binding.tvBannerTitle.text = getString(
                 if (section == Section.MOVIES) R.string.nav_movies else R.string.nav_series
