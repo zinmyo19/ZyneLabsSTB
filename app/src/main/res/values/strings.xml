@@ -101,6 +101,9 @@
     <string name="pip_button">Picture in picture</string>
     <string name="record_button">Record stream</string>
     <string name="channels_button">Channels</string>
+    <string name="prev_channel">Previous channel</string>
+    <string name="next_channel">Next channel</string>
+    <string name="play_pause">Play / pause</string>
     <string name="tracks_audio_title">Audio track</string>
     <string name="sleep_timer_done">Sleep timer: playback stopped</string>
     <string name="on">On</string>
