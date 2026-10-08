@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- ZyneLabs brand colors -->
+    <!-- ZyneLabs Imperial theme (v5.2): gold primary + teal accents on dark.
+         Matches the lion-crown DZ shield logo. -->
     <color name="teal">#00E5CC</color>
-    <color name="background">#0B141F</color>
+    <color name="gold">#D4AF37</color>
+    <color name="gold_dark">#8C6D1F</color>
+    <color name="gold_light">#E8C96A</color>
+    <color name="gold_tint">#2A2413</color>
+    <color name="background">#0A0F14</color>
     <color name="surface">#14202E</color>
     <color name="surface_focused">#1A2A3A</color>
     <color name="text_primary">#FFFFFF</color>
