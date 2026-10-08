@@ -78,6 +78,39 @@
             android:text="@string/tracks_button"
             android:textColor="@color/gold"
             android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/btnPip"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/nav_item_selector"
+            android:focusable="true"
+            android:text="⧉"
+            android:textColor="@color/gold"
+            android:textSize="20sp" />
+
+        <Button
+            android:id="@+id/btnDrawerSettings"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/nav_item_selector"
+            android:focusable="true"
+            android:text="⚙"
+            android:textColor="@color/gold"
+            android:textSize="20sp" />
+
+        <Button
+            android:id="@+id/btnDrawerChannels"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/nav_item_selector"
+            android:focusable="true"
+            android:text="☰"
+            android:textColor="@color/gold"
+            android:textSize="20sp" />
     </LinearLayout>
 
     <!-- ===== Info box (with controls) ===== -->
@@ -213,5 +246,81 @@
         android:textColor="@color/text_secondary"
         android:textSize="16sp"
         android:visibility="gone" />
+
+    <!-- ===== Drawer scrim ===== -->
+    <View
+        android:id="@+id/drawerScrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#80000000"
+        android:visibility="gone" />
+
+    <!-- ===== Channels drawer (right slide-in, v5.3) ===== -->
+    <LinearLayout
+        android:id="@+id/drawerChannels"
+        android:layout_width="340dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:background="#F20A0F14"
+        android:orientation="vertical"
+        android:padding="12dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/drawer_channels_title"
+            android:textColor="@color/gold"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/drawerGenreList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/drawerChannelList"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="8dp"
+            android:layout_weight="1" />
+
+        <ProgressBar
+            android:id="@+id/drawerProgress"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:indeterminateTint="@color/gold"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <!-- ===== Settings drawer (right slide-in, v5.3) ===== -->
+    <LinearLayout
+        android:id="@+id/drawerSettings"
+        android:layout_width="320dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:background="#F20A0F14"
+        android:orientation="vertical"
+        android:padding="12dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/drawer_settings_title"
+            android:textColor="@color/gold"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/drawerSettingsList"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_marginTop="8dp" />
+    </LinearLayout>
 
 </FrameLayout>
