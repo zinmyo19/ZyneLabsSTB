@@ -16,7 +16,7 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="4dp"
             android:text="@string/app_name"
-            android:textColor="@color/teal"
+            android:textColor="@color/gold"
             android:textSize="30sp"
             android:textStyle="bold" />
 
@@ -57,7 +57,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/delete"
-                android:textColor="@color/teal"
+                android:textColor="@color/gold"
                 android:visibility="gone" />
 
         </LinearLayout>
@@ -109,7 +109,7 @@
             android:padding="14dp"
             android:text="@string/connect"
             android:textColor="@color/background"
-            android:backgroundTint="@color/teal" />
+            android:backgroundTint="@color/gold" />
 
         <Button
             android:id="@+id/btnSettings"
@@ -119,7 +119,7 @@
             android:layout_marginTop="12dp"
             android:focusable="true"
             android:text="@string/settings_button"
-            android:textColor="@color/teal" />
+            android:textColor="@color/gold" />
 
         <TextView
             android:id="@+id/tvStatus"
