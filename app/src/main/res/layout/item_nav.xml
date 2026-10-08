@@ -10,12 +10,11 @@
     android:gravity="center_vertical"
     android:padding="12dp">
 
-    <TextView
-        android:id="@+id/tvNavIcon"
-        android:layout_width="32dp"
-        android:layout_height="wrap_content"
-        android:gravity="center"
-        android:textSize="22sp" />
+    <ImageView
+        android:id="@+id/ivNavIcon"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:scaleType="fitCenter" />
 
     <TextView
         android:id="@+id/tvNavLabel"
