@@ -8,6 +8,11 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
+    <!-- v5.6: QR scan for Add Provider (camera optional — TV boxes without one just type the URL). -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+
     <!-- TV support: touchscreen and leanback are optional so the app installs on phones and TV boxes. -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
@@ -76,6 +81,15 @@
         <activity
             android:name=".CategoriesActivity"
             android:exported="false" />
+
+        <!-- v5.6: add/switch portal providers + QR scan. -->
+        <activity
+            android:name=".AddProviderActivity"
+            android:exported="false" />
+        <activity
+            android:name=".QrScanActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
 
     </application>
 
