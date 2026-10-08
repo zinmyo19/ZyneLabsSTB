@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v5.5: gold muted-speaker icon. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#D4AF37"
+        android:pathData="M4,9 v6 h4 l5,4 V5 L8,9 z" />
+    <path
+        android:strokeColor="#E53935"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M16,9 L22,15 M22,9 L16,15" />
+</vector>
