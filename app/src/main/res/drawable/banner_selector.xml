@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Featured banner: gradient normally, teal ring when focused (D-pad). -->
+<!-- v5.2: featured banner — gold gradient normally, teal ring when focused (D-pad). -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_focused="true">
         <shape android:shape="rectangle">
@@ -18,9 +18,10 @@
     <item>
         <shape android:shape="rectangle">
             <gradient
-                android:angle="0"
-                android:endColor="#0B141F"
-                android:startColor="#1A3A44" />
+                android:angle="135"
+                android:startColor="#4A3A10"
+                android:centerColor="#241B08"
+                android:endColor="#0A0F14" />
             <corners android:radius="16dp" />
         </shape>
     </item>
