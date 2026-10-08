@@ -782,9 +782,11 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun updateRecordButton() {
-        // Red dot pulses while recording; gold otherwise.
-        binding.btnRecord.setTextColor(
-            if (isRecording) Color.RED else getColor(R.color.gold)
+        // v5.5: btnRecord is now an ImageButton (vector) — tint red while
+        // recording, gold otherwise.
+        binding.btnRecord.setColorFilter(
+            if (isRecording) Color.RED else getColor(R.color.gold),
+            android.graphics.PorterDuff.Mode.SRC_IN
         )
     }
 
