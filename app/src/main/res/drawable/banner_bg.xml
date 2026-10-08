@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v5.1: featured banner background — dark blue cityscape gradient. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:angle="135"
+        android:startColor="#0E2233"
+        android:centerColor="#0A1626"
+        android:endColor="#060D18" />
+    <corners android:radius="16dp" />
+</shape>
