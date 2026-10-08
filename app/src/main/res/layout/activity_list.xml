@@ -11,7 +11,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginBottom="12dp"
-        android:textColor="@color/teal"
+        android:textColor="@color/gold"
         android:textSize="26sp"
         android:textStyle="bold" />
 
@@ -30,7 +30,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:indeterminateTint="@color/teal" />
+            android:indeterminateTint="@color/gold" />
 
         <LinearLayout
             android:layout_width="wrap_content"
@@ -53,7 +53,7 @@
                 android:id="@+id/btnRetry"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:backgroundTint="@color/teal"
+                android:backgroundTint="@color/gold"
                 android:text="@string/retry"
                 android:textColor="@color/background"
                 android:visibility="gone" />
