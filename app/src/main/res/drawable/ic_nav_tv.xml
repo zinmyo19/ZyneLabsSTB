@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v5.2: gold TV icon (Imperial) — replaces emoji. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#D4AF37"
+        android:pathData="M4,8 h16 a1,1 0 0 1 1,1 v8 a1,1 0 0 1 -1,1 H4 a1,1 0 0 1 -1,-1 V9 a1,1 0 0 1 1,-1 z" />
+    <path
+        android:fillColor="#0A0F14"
+        android:pathData="M5.5,10 h13 v6 h-13 z" />
+    <path
+        android:strokeColor="#D4AF37"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:pathData="M12,8 L7.5,3.5 M12,8 L16.5,3.5 M9,20.5 h6" />
+</vector>
