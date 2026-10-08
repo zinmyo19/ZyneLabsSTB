@@ -356,18 +356,18 @@ class PlayerActivity : AppCompatActivity() {
             try {
                 val api = StalkerSession.get(this@PlayerActivity)
                 drawerGenres = api.getGenres()
-                val items = drawerGenres.map {
-                    RowItem("g_${it.id}", it.title)
-                }
-                drawerGenreAdapter.submitList(items)
-                // Pre-select the playing channel's genre (or first).
-                val sel = drawerGenres.find { it.id == drawerGenreId }
-                    ?: drawerGenres.firstOrNull()
-                if (sel != null) loadDrawerChannels(sel.id)
             } catch (e: Exception) {
-                // Genres optional — fall back to unfiltered list.
-                loadDrawerChannels(null)
+                drawerGenres = emptyList()
             }
+            // v5.5: ALWAYS show at least the "All" chip — previously an
+            // empty/failed genre list left the drawer with no chips and
+            // no channels. "All" clears the genre filter.
+            val items = listOf(RowItem("g_", getString(R.string.all_channels))) +
+                drawerGenres.map { RowItem("g_${it.id}", it.title) }
+            drawerGenreAdapter.submitList(items)
+            // Pre-select the playing channel's genre (or All).
+            val sel = drawerGenres.find { it.id == drawerGenreId }
+            loadDrawerChannels(sel?.id)
         }
     }
 
