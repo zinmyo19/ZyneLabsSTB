@@ -3,6 +3,10 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- v5.4: recording to Downloads on Android 9 and below (MediaStore needs no permission on 10+). -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
 
     <!-- TV support: touchscreen and leanback are optional so the app installs on phones and TV boxes. -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -68,6 +72,10 @@
             android:screenOrientation="landscape"
             android:supportsPictureInPicture="true"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden" />
+
+        <activity
+            android:name=".CategoriesActivity"
+            android:exported="false" />
 
     </application>
 
