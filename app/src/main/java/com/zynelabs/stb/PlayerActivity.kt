@@ -2,14 +2,18 @@ package com.zynelabs.stb
 
 import android.graphics.Color
 import android.os.Bundle
-import android.view.ViewGroup
-import android.widget.FrameLayout
+import android.os.Handler
+import android.os.Looper
+import android.view.KeyEvent
+import android.view.View
+import android.widget.SeekBar
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -21,13 +25,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Player screen: resolves the channel/VOD cmd via create_link, then plays
- * the stream URL with Media3 ExoPlayer. The PlayerView controller handles
- * D-pad OK (show/hide controls) natively.
- *
- * Applies user settings: display aspect ratio, subtitles on/off + style,
- * preferred audio language, playback speed, buffer size, sleep timer.
- * v5.0: "Tracks" button opens the audio track picker (Auto + available).
+ * v5.1 FlowPlay-style player UI (custom controller, PlayerView's is OFF):
+ * - Transparent floating top bar: back, title, LIVE badge, Tracks
+ * - Info box with channel name + meta (shown with controls)
+ * - Bottom transport: play/pause, seek bar (VOD), position/duration
+ * - Inline settings strip: speed / audio / subtitles / aspect — wired to
+ *   v5.0 Prefs and applied live
+ * - Controls auto-hide after 4s; any D-pad key resets the timer; OK on the
+ *   video surface toggles controls (standing TV-remote scheme)
+ * Engine: Media3 ExoPlayer (unchanged). create_link resolution unchanged.
  */
 class PlayerActivity : AppCompatActivity() {
 
@@ -37,11 +43,23 @@ class PlayerActivity : AppCompatActivity() {
         const val EXTRA_CMD_TYPE = "cmd_type"
         const val TYPE_ITV = "itv"
         const val TYPE_VOD = "vod"
+        private const val HIDE_DELAY_MS = 4000L
     }
 
     private lateinit var binding: ActivityPlayerBinding
     private var player: ExoPlayer? = null
     private var sleepJob: Job? = null
+    private var channelName = ""
+    private var isVod = false
+
+    private val uiHandler = Handler(Looper.getMainLooper())
+    private val hideRunnable = Runnable { hideControls() }
+    private val progressRunnable = object : Runnable {
+        override fun run() {
+            updateProgress()
+            uiHandler.postDelayed(this, 500)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,28 +67,202 @@ class PlayerActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         val cmd = intent.getStringExtra(EXTRA_CMD).orEmpty()
-        val name = intent.getStringExtra(EXTRA_NAME).orEmpty()
+        channelName = intent.getStringExtra(EXTRA_NAME).orEmpty()
         if (cmd.isBlank()) {
             finish()
             return
         }
-        binding.tvTitle.text = name
+        isVod = intent.getStringExtra(EXTRA_CMD_TYPE) == TYPE_VOD
 
-        // v5.0: audio track picker (Auto + available tracks when the
-        // stream carries more than one).
-        binding.btnTracks.setOnClickListener {
-            player?.let { p ->
-                TrackSelectionDialogBuilder(
-                    this,
-                    getString(R.string.tracks_audio_title),
-                    p,
-                    C.TRACK_TYPE_AUDIO
-                ).build().show()
+        binding.tvTitle.text = channelName.ifBlank { getString(R.string.unknown_channel) }
+        binding.tvInfoName.text = binding.tvTitle.text
+        binding.tvInfoMeta.text = if (isVod) "VOD" else "Live TV"
+
+        // Top bar
+        binding.btnBack.setOnClickListener { finish() }
+        binding.btnTracks.setOnClickListener { showAudioTracks() }
+
+        // Transport
+        binding.btnPlayPause.setOnClickListener { togglePlayPause() }
+        binding.seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
+                if (fromUser) bumpHideTimer()
             }
+            override fun onStartTrackingTouch(sb: SeekBar?) {
+                uiHandler.removeCallbacks(hideRunnable)
+            }
+            override fun onStopTrackingTouch(sb: SeekBar?) {
+                val p = player ?: return
+                val dur = p.duration
+                if (dur > 0) p.seekTo(dur * binding.seekBar.progress / 1000)
+                bumpHideTimer()
+            }
+        })
+
+        // Settings strip (wired to v5.0 Prefs, applied live)
+        refreshStripLabels()
+        binding.btnSpeed.setOnClickListener {
+            val label = Prefs.cyclePlaybackSpeed(this)
+            player?.setPlaybackSpeed(Prefs.playbackSpeedValue(this))
+            binding.btnSpeed.text = label
+            bumpHideTimer()
+        }
+        binding.btnAudio.setOnClickListener { showAudioTracks() }
+        binding.btnSubtitles.setOnClickListener {
+            val on = !Prefs.getSubtitlesEnabled(this)
+            Prefs.setSubtitlesEnabled(this, on)
+            applySubtitleTrack()
+            refreshStripLabels()
+            bumpHideTimer()
+        }
+        binding.btnAspect.setOnClickListener {
+            val label = Prefs.cycleAspectRatio(this)
+            applyAspectRatio()
+            binding.btnAspect.text = label
+            bumpHideTimer()
         }
 
+        // OK on the surface toggles controls (standing TV scheme).
+        binding.playerRoot.setOnClickListener { toggleControls() }
+
+        showControls()
         resolveAndPlay(cmd)
     }
+
+    // ------------------------------------------------------------ controls
+
+    private fun showControls() {
+        binding.topBar.isVisible = true
+        binding.infoBox.isVisible = true
+        binding.bottomControls.isVisible = true
+        bumpHideTimer()
+        uiHandler.post(progressRunnable)
+        if (isTvFocus()) binding.btnPlayPause.requestFocus()
+    }
+
+    private fun hideControls() {
+        binding.topBar.isVisible = false
+        binding.infoBox.isVisible = false
+        binding.bottomControls.isVisible = false
+        uiHandler.removeCallbacks(progressRunnable)
+    }
+
+    private fun toggleControls() {
+        if (binding.bottomControls.isVisible) hideControls() else showControls()
+    }
+
+    private fun bumpHideTimer() {
+        uiHandler.removeCallbacks(hideRunnable)
+        uiHandler.postDelayed(hideRunnable, HIDE_DELAY_MS)
+    }
+
+    private fun isTvFocus(): Boolean {
+        return resources.configuration.uiMode and
+            android.content.res.Configuration.UI_MODE_TYPE_MASK ==
+            android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+    }
+
+    /** Every D-pad key keeps the overlay alive (FlowPlay pattern). */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    if (!binding.bottomControls.isVisible) {
+                        showControls()
+                        return true
+                    }
+                    bumpHideTimer()
+                }
+                KeyEvent.KEYCODE_MENU -> {
+                    toggleControls()
+                    return true
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    // ------------------------------------------------------------ transport
+
+    private fun togglePlayPause() {
+        val p = player ?: return
+        if (p.isPlaying) p.pause() else p.play()
+        updatePlayPauseIcon()
+        bumpHideTimer()
+    }
+
+    private fun updatePlayPauseIcon() {
+        binding.btnPlayPause.text = if (player?.isPlaying == true) "⏸" else "▶"
+    }
+
+    private fun updateProgress() {
+        val p = player ?: return
+        val dur = p.duration
+        val pos = p.currentPosition
+        if (isVod && dur > 0) {
+            binding.seekBar.isVisible = true
+            binding.seekBar.progress = (pos * 1000 / dur).toInt().coerceIn(0, 1000)
+            binding.tvPosition.text = fmtTime(pos)
+            binding.tvDuration.text = fmtTime(dur)
+        } else {
+            // Live: no seeking.
+            binding.seekBar.isVisible = false
+            binding.tvPosition.text = fmtTime(pos)
+            binding.tvDuration.text = "LIVE"
+        }
+    }
+
+    private fun fmtTime(ms: Long): String {
+        val s = (ms / 1000).toInt().coerceAtLeast(0)
+        return "%02d:%02d".format(s / 60, s % 60)
+    }
+
+    // ------------------------------------------------------------ settings
+
+    private fun refreshStripLabels() {
+        binding.btnSpeed.text = Prefs.getPlaybackSpeedLabel(this)
+        binding.btnAudio.text = Prefs.getAudioLangLabel(this)
+        binding.btnSubtitles.text =
+            if (Prefs.getSubtitlesEnabled(this)) "Subs: On" else "Subs: Off"
+        binding.btnAspect.text = Prefs.getAspectRatio(this)
+    }
+
+    private fun showAudioTracks() {
+        val p = player ?: return
+        TrackSelectionDialogBuilder(
+            this,
+            getString(R.string.tracks_audio_title),
+            p,
+            C.TRACK_TYPE_AUDIO
+        ).build().show()
+        bumpHideTimer()
+    }
+
+    private fun applySubtitleTrack() {
+        val p = player ?: return
+        val params = p.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !Prefs.getSubtitlesEnabled(this))
+        val audioLang = Prefs.getAudioLangCode(this)
+        if (audioLang.isNotEmpty()) params.setPreferredAudioLanguage(audioLang)
+        p.trackSelectionParameters = params.build()
+        binding.playerView.subtitleView?.let { sv ->
+            sv.setFractionalTextSize(Prefs.subtitleSizeFraction(this))
+            sv.setStyle(
+                CaptionStyleCompat(
+                    Prefs.subtitleColorInt(this),
+                    Color.TRANSPARENT,
+                    Color.TRANSPARENT,
+                    CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                    Color.BLACK,
+                    null
+                )
+            )
+        }
+    }
+
+    // ------------------------------------------------------------ playback
 
     private fun resolveAndPlay(cmd: String) {
         binding.progressBar.isVisible = true
@@ -95,7 +287,6 @@ class PlayerActivity : AppCompatActivity() {
     private fun initPlayer(url: String) {
         releasePlayer()
 
-        // v5.0: buffer size preset -> ExoPlayer load control.
         val (minBufferMs, maxBufferMs) = Prefs.bufferDurationsMs(this)
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
@@ -111,48 +302,24 @@ class PlayerActivity : AppCompatActivity() {
         player = newPlayer
         binding.playerView.player = newPlayer
 
-        // Subtitles on/off + preferred audio language.
-        val trackParams = newPlayer.trackSelectionParameters.buildUpon()
-            .setTrackTypeDisabled(
-                C.TRACK_TYPE_TEXT, !Prefs.getSubtitlesEnabled(this)
-            )
-        val audioLang = Prefs.getAudioLangCode(this)
-        if (audioLang.isNotEmpty()) {
-            trackParams.setPreferredAudioLanguage(audioLang)
-        }
-        newPlayer.trackSelectionParameters = trackParams.build()
+        newPlayer.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                updatePlayPauseIcon()
+            }
+        })
 
-        // v5.0: subtitle style (size + color).
-        binding.playerView.subtitleView?.let { sv ->
-            sv.setFractionalTextSize(Prefs.subtitleSizeFraction(this))
-            sv.setStyle(
-                CaptionStyleCompat(
-                    Prefs.subtitleColorInt(this),
-                    Color.TRANSPARENT,
-                    Color.TRANSPARENT,
-                    CaptionStyleCompat.EDGE_TYPE_OUTLINE,
-                    Color.BLACK,
-                    null
-                )
-            )
-        }
-
-        // v5.0: playback speed.
+        applySubtitleTrack()
         newPlayer.setPlaybackSpeed(Prefs.playbackSpeedValue(this))
-
         applyAspectRatio()
 
         newPlayer.setMediaItem(MediaItem.fromUri(url))
         newPlayer.prepare()
         newPlayer.play()
+        updatePlayPauseIcon()
 
         startSleepTimer()
     }
 
-    /**
-     * v5.0: sleep timer — pauses playback after the configured delay.
-     * Cancelled when the player is released.
-     */
     private fun startSleepTimer() {
         sleepJob?.cancel()
         sleepJob = null
@@ -161,6 +328,7 @@ class PlayerActivity : AppCompatActivity() {
         sleepJob = lifecycleScope.launch {
             delay(minutes * 60_000L)
             player?.pause()
+            updatePlayPauseIcon()
             Toast.makeText(
                 this@PlayerActivity,
                 getString(R.string.sleep_timer_done),
@@ -169,16 +337,11 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Applies the user's aspect-ratio setting by sizing the PlayerView
-     * inside its FrameLayout parent. "Auto" fills and fits; a fixed
-     * ratio (16:9, 4:3, …) letterboxes/pillarboxes to that exact ratio.
-     */
     private fun applyAspectRatio() {
         val ratio = Prefs.getAspectRatio(this)
-        val parent = binding.playerView.parent as? FrameLayout ?: return
-        val params = binding.playerView.layoutParams as? FrameLayout.LayoutParams
-            ?: FrameLayout.LayoutParams(
+        val parent = binding.playerView.parent as? android.widget.FrameLayout ?: return
+        val params = binding.playerView.layoutParams as? android.widget.FrameLayout.LayoutParams
+            ?: android.widget.FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
@@ -210,6 +373,8 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun releasePlayer() {
+        uiHandler.removeCallbacks(hideRunnable)
+        uiHandler.removeCallbacks(progressRunnable)
         sleepJob?.cancel()
         sleepJob = null
         binding.playerView.player = null
@@ -220,10 +385,12 @@ class PlayerActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         player?.play()
+        updatePlayPauseIcon()
     }
 
     override fun onStop() {
         player?.pause()
+        updatePlayPauseIcon()
         super.onStop()
     }
 
