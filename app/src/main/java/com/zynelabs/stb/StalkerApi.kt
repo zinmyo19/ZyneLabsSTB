@@ -1,6 +1,8 @@
 package com.zynelabs.stb
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -1493,53 +1495,80 @@ class StalkerApi(
      * This fetches small pages (~16KB, 14 items) instead, each through
      * [withSession] (Bearer header + self-healing + handshake lock).
      *
+     * v5.3: FULL pagination — loops pages until an EMPTY page arrives.
+     * No artificial page cap (maxPages defaults to unlimited). Pages are
+     * fetched in small concurrent batches (6 at a time) for speed; each
+     * request runs on Dispatchers.IO inside [get], so concurrency is safe.
+     * Termination is on raw empty data only — partial pages do NOT stop
+     * the loop (a portal may pad pages). Home previews still use maxPages=1
+     * for fast load; full lists (See all / genre) use the default.
+     *
      * @param genreId TV genre ID to filter by (sent as genre param; also
      *   applied client-side as a safety net), or null for all channels.
-     * @param maxPages safety cap on pages to fetch (14 items/page).
+     * @param maxPages safety cap on pages to fetch (default: unlimited).
+     * @param onProgress optional (pagesDone, channelsSoFar) callback.
      * @return accumulated channels, sorted by channel number.
      */
     suspend fun getChannelsPaginated(
         genreId: String? = null,
-        maxPages: Int = 20
-    ): List<Channel> {
+        maxPages: Int = Int.MAX_VALUE,
+        onProgress: ((pagesDone: Int, channelsSoFar: Int) -> Unit)? = null
+    ): List<Channel> = coroutineScope {
         val all = ArrayList<Channel>()
         var page = 1
-        var lastPage = false
-        while (page <= maxPages && !lastPage) {
-            val extra = mutableMapOf("p" to page.toString())
-            if (!genreId.isNullOrBlank()) extra["genre"] = genreId
-            val (channels, isLast) = withSession {
-                val js = jsPayload(get("itv", "get_ordered_list", extra))
-                val data = js.optJSONArray("data")
-                if (data == null || data.length() == 0) {
-                    return@withSession Pair(emptyList<Channel>(), true)
+        var done = false
+        val batchSize = 6
+        while (!done && page <= maxPages) {
+            val batchEnd = minOf(page + batchSize, maxPages + 1)
+            val batch = (page until batchEnd).toList()
+            if (batch.isEmpty()) break
+            val results = batch.map { p ->
+                async { fetchChannelPage(p, genreId) }
+            }.awaitAll()
+            for (res in results) {
+                all.addAll(res)
+                if (res.isEmpty()) {
+                    done = true
+                    break
                 }
-                val maxItems = js.optInt("max_page_items", 14)
-                val list = ArrayList<Channel>(data.length())
-                for (i in 0 until data.length()) {
-                    val o = data.getJSONObject(i)
-                    val chGenreId = o.optString("tv_genre_id")
-                    // Client-side filter: the portal may ignore the genre
-                    // param and return unfiltered pages.
-                    if (!genreId.isNullOrBlank() && chGenreId != genreId) continue
-                    list.add(
-                        Channel(
-                            id = o.optString("id"),
-                            number = o.optString("number"),
-                            name = o.optString("name"),
-                            cmd = o.optString("cmd"),
-                            logo = o.optString("logo"),
-                            genreId = chGenreId
-                        )
-                    )
-                }
-                Pair(list as List<Channel>, data.length() < maxItems)
             }
-            all.addAll(channels)
-            lastPage = isLast
-            page++
+            page += batch.size
+            onProgress?.invoke(page - 1, all.size)
         }
-        return all.sortedBy { it.number.toIntOrNull() ?: Int.MAX_VALUE }
+        all.sortedBy { it.number.toIntOrNull() ?: Int.MAX_VALUE }
+    }
+
+    /** v5.3: one page of itv/get_ordered_list. Empty list = raw data empty. */
+    private suspend fun fetchChannelPage(
+        page: Int,
+        genreId: String?
+    ): List<Channel> = withSession {
+        val extra = mutableMapOf("p" to page.toString())
+        if (!genreId.isNullOrBlank()) extra["genre"] = genreId
+        val js = jsPayload(get("itv", "get_ordered_list", extra))
+        val data = js.optJSONArray("data")
+        if (data == null || data.length() == 0) {
+            return@withSession emptyList<Channel>()
+        }
+        val list = ArrayList<Channel>(data.length())
+        for (i in 0 until data.length()) {
+            val o = data.getJSONObject(i)
+            val chGenreId = o.optString("tv_genre_id")
+            // Client-side filter: the portal may ignore the genre
+            // param and return unfiltered pages.
+            if (!genreId.isNullOrBlank() && chGenreId != genreId) continue
+            list.add(
+                Channel(
+                    id = o.optString("id"),
+                    number = o.optString("number"),
+                    name = o.optString("name"),
+                    cmd = o.optString("cmd"),
+                    logo = o.optString("logo"),
+                    genreId = chGenreId
+                )
+            )
+        }
+        list
     }
 
     /**
