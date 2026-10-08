@@ -22,14 +22,17 @@ class SettingsActivity : AppCompatActivity() {
     private val adapter = RowAdapter { item -> onRowClick(item.id) }
 
     companion object {
+        private const val ID_HDR_PLAYBACK = "header_playback"
         private const val ID_ASPECT = "aspect"
         private const val ID_PLAYER = "player"
         private const val ID_SUBTITLES = "subtitles"
         private const val ID_AUDIO = "audio"
+        private const val ID_HDR_PORTAL = "header_portal"
         private const val ID_PORTAL = "portal"
+        private const val ID_RESET = "reset"
+        private const val ID_HDR_DEVELOPER = "header_developer"
         private const val ID_PROBE = "probe"
         private const val ID_DEBUG = "debug"
-        private const val ID_RESET = "reset"
         private const val ID_VERSION = "version"
         // v5.0 player settings
         private const val ID_HDR_PLAYER = "header_player"
@@ -59,7 +62,9 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun refresh() {
+        // v5.3: condensed into sections (was one long flat list).
         val rows = listOf(
+            RowItem(ID_HDR_PLAYBACK, getString(R.string.section_playback), header = true),
             RowItem(
                 ID_ASPECT,
                 getString(R.string.setting_aspect),
@@ -82,17 +87,7 @@ class SettingsActivity : AppCompatActivity() {
                 getString(R.string.setting_audio_lang),
                 Prefs.getAudioLangLabel(this)
             ),
-            RowItem(
-                ID_PORTAL,
-                getString(R.string.setting_portal),
-                Prefs.getMac(this)
-            ),
-            // v5.0: Player section
-            RowItem(
-                ID_HDR_PLAYER,
-                getString(R.string.section_player),
-                header = true
-            ),
+            RowItem(ID_HDR_PLAYER, getString(R.string.section_player), header = true),
             RowItem(
                 ID_SPEED,
                 getString(R.string.setting_speed),
@@ -118,6 +113,18 @@ class SettingsActivity : AppCompatActivity() {
                 getString(R.string.setting_sleep),
                 Prefs.getSleepTimer(this)
             ),
+            RowItem(ID_HDR_PORTAL, getString(R.string.section_portal), header = true),
+            RowItem(
+                ID_PORTAL,
+                getString(R.string.setting_portal),
+                Prefs.getMac(this)
+            ),
+            RowItem(
+                ID_RESET,
+                getString(R.string.reset_connection_row),
+                ""
+            ),
+            RowItem(ID_HDR_DEVELOPER, getString(R.string.section_developer), header = true),
             RowItem(
                 ID_PROBE,
                 getString(R.string.probe_row),
@@ -126,11 +133,6 @@ class SettingsActivity : AppCompatActivity() {
             RowItem(
                 ID_DEBUG,
                 getString(R.string.debug_row),
-                ""
-            ),
-            RowItem(
-                ID_RESET,
-                getString(R.string.reset_connection_row),
                 ""
             ),
             RowItem(
@@ -143,7 +145,8 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun onRowClick(id: String) {
-        if (id == ID_HDR_PLAYER) return // section header, not interactive
+        // v5.3: section headers are not interactive.
+        if (id.startsWith("header_")) return
         when (id) {
             ID_ASPECT -> Prefs.cycleAspectRatio(this)
             ID_SUBTITLES -> Prefs.setSubtitlesEnabled(
