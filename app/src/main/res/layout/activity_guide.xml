@@ -11,7 +11,7 @@
         android:layout_height="wrap_content"
         android:layout_marginBottom="12dp"
         android:text="@string/tv_guide"
-        android:textColor="@color/teal"
+        android:textColor="@color/gold"
         android:textSize="26sp"
         android:textStyle="bold" />
 
@@ -44,7 +44,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:indeterminateTint="@color/teal" />
+            android:indeterminateTint="@color/gold" />
 
         <TextView
             android:id="@+id/tvError"
