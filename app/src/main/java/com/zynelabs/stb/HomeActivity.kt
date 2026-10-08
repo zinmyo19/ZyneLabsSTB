@@ -64,7 +64,7 @@ class HomeActivity : AppCompatActivity() {
     }
 
     private data class NavEntry(
-        val icon: String,
+        val iconRes: Int,
         val labelRes: Int,
         val section: Section?,
         val onPick: () -> Unit
@@ -113,19 +113,19 @@ class HomeActivity : AppCompatActivity() {
 
     private fun buildNav() {
         val entries = listOf(
-            NavEntry("\uD83D\uDCFA", R.string.nav_live_tv, Section.LIVE_TV) {
+            NavEntry(R.drawable.ic_nav_tv, R.string.nav_live_tv, Section.LIVE_TV) {
                 selectSection(Section.LIVE_TV)
             },
-            NavEntry("\uD83C\uDFAC", R.string.nav_movies, Section.MOVIES) {
+            NavEntry(R.drawable.ic_nav_movies, R.string.nav_movies, Section.MOVIES) {
                 selectSection(Section.MOVIES)
             },
-            NavEntry("\uD83D\uDCFC", R.string.nav_series, Section.SERIES) {
+            NavEntry(R.drawable.ic_nav_series, R.string.nav_series, Section.SERIES) {
                 selectSection(Section.SERIES)
             },
-            NavEntry("\uD83D\uDCC5", R.string.nav_guide, null) {
+            NavEntry(R.drawable.ic_nav_guide, R.string.nav_guide, null) {
                 startActivity(Intent(this, GuideActivity::class.java))
             },
-            NavEntry("⚙️", R.string.nav_settings, null) {
+            NavEntry(R.drawable.ic_nav_settings, R.string.nav_settings, null) {
                 startActivity(Intent(this, SettingsActivity::class.java))
             }
         )
@@ -133,7 +133,7 @@ class HomeActivity : AppCompatActivity() {
         val container: ViewGroup = if (isTv) binding.navContainer else binding.bottomNav
         for (e in entries) {
             val b = ItemNavBinding.inflate(inflater, container, false)
-            b.tvNavIcon.text = e.icon
+            b.ivNavIcon.setImageResource(e.iconRes)
             b.tvNavLabel.text = getString(e.labelRes)
             if (!isTv) {
                 b.root.orientation = LinearLayout.VERTICAL
@@ -142,9 +142,6 @@ class HomeActivity : AppCompatActivity() {
                     0, ViewGroup.LayoutParams.MATCH_PARENT, 1f
                 )
                 b.tvNavLabel.textSize = 11f
-                (b.tvNavIcon.layoutParams as LinearLayout.LayoutParams).apply {
-                    width = ViewGroup.LayoutParams.WRAP_CONTENT
-                }
                 (b.tvNavLabel.layoutParams as LinearLayout.LayoutParams).apply {
                     marginStart = 0
                 }
@@ -155,7 +152,7 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
-    /** v5.1: active nav row = teal pill (mockup), inactive = transparent. */
+    /** v5.2: active nav row = gold pill (Imperial), inactive = transparent. */
     private fun selectSection(s: Section) {
         val force = (s == section && rowsAdapter.itemCount > 0)
         section = s
@@ -164,7 +161,7 @@ class HomeActivity : AppCompatActivity() {
     }
 
     private fun highlightNav() {
-        val teal = ContextCompat.getColor(this, R.color.teal)
+        val gold = ContextCompat.getColor(this, R.color.gold)
         val white = ContextCompat.getColor(this, R.color.text_primary)
         val darkText = ContextCompat.getColor(this, R.color.background)
         val pill = ContextCompat.getDrawable(this, R.drawable.nav_item_active)
@@ -173,7 +170,10 @@ class HomeActivity : AppCompatActivity() {
             val active = sec == section
             view.background = (if (active) pill else plain)?.constantState?.newDrawable()
             view.findViewById<android.widget.TextView>(R.id.tvNavLabel)
-                ?.setTextColor(if (active && isTv) darkText else if (active) teal else white)
+                ?.setTextColor(if (active) darkText else white)
+            // v5.2: dim the icon on inactive rows (gold icons stay gold when active)
+            view.findViewById<android.widget.ImageView>(R.id.ivNavIcon)
+                ?.setAlpha(if (active) 1.0f else 0.55f)
         }
     }
 
