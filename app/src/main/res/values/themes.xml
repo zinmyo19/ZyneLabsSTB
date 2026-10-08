@@ -9,4 +9,17 @@
         <item name="android:navigationBarColor">@color/background</item>
         <item name="android:textColorPrimary">@color/text_primary</item>
     </style>
+
+    <!-- v5.1: settings strip chip buttons (FlowPlay-style player). -->
+    <style name="PlayerChipButton" parent="Widget.AppCompat.Button">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">40dp</item>
+        <item name="android:layout_marginEnd">8dp</item>
+        <item name="android:background">@drawable/nav_item_selector</item>
+        <item name="android:focusable">true</item>
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">12dp</item>
+        <item name="android:textColor">@color/teal</item>
+        <item name="android:textSize">12sp</item>
+    </style>
 </resources>
