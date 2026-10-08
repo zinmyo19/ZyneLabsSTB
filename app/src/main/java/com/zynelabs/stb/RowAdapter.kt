@@ -16,7 +16,9 @@ data class RowItem(
     val id: String,
     val title: String,
     val value: String = "",
-    val posterUrl: String = ""
+    val posterUrl: String = "",
+    /** v5.0: section header — non-clickable, styled distinctly. */
+    val header: Boolean = false
 )
 
 class RowAdapter(
@@ -49,6 +51,20 @@ class RowAdapter(
         fun bind(item: RowItem) {
             binding.tvTitle.text = item.title
             binding.tvValue.text = item.value
+            // v5.0: section headers are non-interactive and styled distinctly.
+            if (item.header) {
+                binding.root.isFocusable = false
+                binding.root.isClickable = false
+                binding.tvTitle.setTextColor(0xFF00E5CC.toInt())
+                binding.tvTitle.textSize = 14f
+                binding.tvTitle.typeface = android.graphics.Typeface.DEFAULT_BOLD
+            } else {
+                binding.root.isFocusable = true
+                binding.root.isClickable = true
+                binding.tvTitle.setTextColor(0xFFFFFFFF.toInt())
+                binding.tvTitle.textSize = 18f
+                binding.tvTitle.typeface = android.graphics.Typeface.DEFAULT
+            }
             // v4.9: poster thumbnail (VOD items); hidden when absent.
             if (item.posterUrl.isNotBlank()) {
                 binding.ivThumb.visibility = android.view.View.VISIBLE
