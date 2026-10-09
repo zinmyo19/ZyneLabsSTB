@@ -88,7 +88,7 @@ class GuideActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                val api = StalkerSession.get(this@GuideActivity)
+                val api = SourceManager.get(this@GuideActivity)
                 val genreId = intent.getStringExtra(EXTRA_GENRE_ID)
                 // v2.8: paginated (see ChannelListActivity) — MAX_ROWS caps
                 // the guide rows after fetching.
@@ -124,7 +124,7 @@ class GuideActivity : AppCompatActivity() {
         holder.showLoading(row.channel)
         lifecycleScope.launch {
             try {
-                val api = StalkerSession.get(this@GuideActivity)
+                val api = SourceManager.get(this@GuideActivity)
                 val programs = api.getEpg(row.channel.id, row.date)
                 epgCache[key] = programs
                 holder.showPrograms(row.channel, programs)
