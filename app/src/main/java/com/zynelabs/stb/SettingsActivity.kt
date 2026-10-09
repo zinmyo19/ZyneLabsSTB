@@ -37,7 +37,6 @@ class SettingsActivity : AppCompatActivity() {
         private const val TAB_DEVELOPER = 3
 
         private const val ID_PROVIDERS = "providers"
-        private const val ID_QR_PAIR = "qr_pair"
         private const val ID_PROVIDER_DETAILS = "provider_details"
         private const val ID_RECONNECT = "provider_reconnect"
         private const val ID_RESET = "reset"
@@ -140,7 +139,9 @@ class SettingsActivity : AppCompatActivity() {
                 active?.let { ProviderStore.displayName(it) }
                     ?: getString(R.string.no_provider)
             ),
-            RowItem(ID_QR_PAIR, getString(R.string.pair_qr_title), ""),
+            // v6.3.2: QR pairing moved to the Add Provider screen
+            // ("Show QR code (pair with phone)" button) — it is an
+            // add-provider action, not a settings row.
             RowItem(ID_PROVIDER_DETAILS, getString(R.string.provider_details_row), ""),
             RowItem(ID_RECONNECT, getString(R.string.provider_reconnect_row), ""),
             RowItem(ID_RESET, getString(R.string.reset_connection_row), "")
@@ -218,10 +219,7 @@ class SettingsActivity : AppCompatActivity() {
                 startActivity(Intent(this, ProviderListActivity::class.java))
                 return
             }
-            ID_QR_PAIR -> {
-                startActivity(Intent(this, QrPairActivity::class.java))
-                return
-            }
+            // v6.3.2: ID_QR_PAIR removed — pairing lives in AddProvider.
             ID_PROVIDER_DETAILS -> {
                 showProviderDetails()
                 return
@@ -299,6 +297,13 @@ class SettingsActivity : AppCompatActivity() {
                     Toast.LENGTH_LONG
                 ).show()
                 return@launch
+            }
+            // v6.3.2: cache for the provider switcher list rows.
+            ProviderStore.getActive(this@SettingsActivity)?.let { active ->
+                ProviderStore.savePortalInfo(
+                    this@SettingsActivity, active.id,
+                    info.expireDate, info.channelCount
+                )
             }
             val lines = listOf(
                 "${getString(R.string.provider_info_name)}: " +
