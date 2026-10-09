@@ -125,7 +125,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|start"
         android:layout_marginStart="16dp"
-        android:layout_marginBottom="134dp"
+        android:layout_marginBottom="90dp"
         android:maxWidth="440dp"
         android:minWidth="300dp"
         android:orientation="vertical"
@@ -577,42 +577,100 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- v6.3.3: vertical VOLUME slider on the RIGHT edge (FlowPlay-style).
-         Container (volumeBar) + inner bar (volumeProgress), as the code expects. -->
-    <FrameLayout
+    <!-- v6.3.9: FlowPlay-style volume indicator on the RIGHT edge —
+         opaque dark pill with gold speaker icon, vertical gold progress bar,
+         and percentage label. -->
+    <LinearLayout
         android:id="@+id/volumeBar"
-        android:layout_width="wrap_content"
+        android:layout_width="64dp"
         android:layout_height="wrap_content"
         android:layout_gravity="center_vertical|end"
+        android:layout_marginEnd="12dp"
+        android:background="@drawable/gesture_bar_background"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:padding="12dp"
         android:visibility="gone">
 
-        <ProgressBar
-            android:id="@+id/volumeProgress"
-            style="?android:attr/progressBarStyleHorizontal"
-            android:layout_width="140dp"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:layout_marginEnd="-52dp"
-            android:rotation="270" />
-    </FrameLayout>
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:src="@drawable/ic_volume" />
 
-    <!-- Brightness indicator on the LEFT edge. -->
-    <FrameLayout
+        <FrameLayout
+            android:layout_width="24dp"
+            android:layout_height="110dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp">
+
+            <ProgressBar
+                android:id="@+id/volumeProgress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="110dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center"
+                android:rotation="270"
+                android:progressTint="@color/gold"
+                android:progressBackgroundTint="#33FFFFFF" />
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/tvVolumePct"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="50%"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- v6.3.9: FlowPlay-style brightness indicator on the LEFT edge —
+         opaque dark pill with gold sun icon, vertical gold progress bar,
+         and percentage label. -->
+    <LinearLayout
         android:id="@+id/brightnessBar"
-        android:layout_width="wrap_content"
+        android:layout_width="64dp"
         android:layout_height="wrap_content"
         android:layout_gravity="center_vertical|start"
+        android:layout_marginStart="12dp"
+        android:background="@drawable/gesture_bar_background"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:padding="12dp"
         android:visibility="gone">
 
-        <ProgressBar
-            android:id="@+id/brightnessProgress"
-            style="?android:attr/progressBarStyleHorizontal"
-            android:layout_width="140dp"
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:src="@drawable/ic_brightness" />
+
+        <FrameLayout
+            android:layout_width="24dp"
+            android:layout_height="110dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp">
+
+            <ProgressBar
+                android:id="@+id/brightnessProgress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="110dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center"
+                android:max="100"
+                android:rotation="270"
+                android:progressTint="@color/gold"
+                android:progressBackgroundTint="#33FFFFFF" />
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/tvBrightnessPct"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:layout_marginStart="-52dp"
-            android:rotation="270" />
-    </FrameLayout>
+            android:text="50%"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
 
     <!-- Drawer scrim. -->
     <View
