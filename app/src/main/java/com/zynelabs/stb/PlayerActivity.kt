@@ -959,6 +959,7 @@ class PlayerActivity : AppCompatActivity() {
         binding.volumeBar.isVisible = true
         binding.volumeProgress.max = max.coerceAtLeast(1)
         binding.volumeProgress.progress = v
+        binding.tvVolumePct.text = "${(v * 100 / max.coerceAtLeast(1))}%"
         uiHandler.removeCallbacks(gestureHideRunnable)
         uiHandler.postDelayed(gestureHideRunnable, 1500)
     }
@@ -966,6 +967,7 @@ class PlayerActivity : AppCompatActivity() {
     private fun showBrightnessBar(v: Float) {
         binding.brightnessBar.isVisible = true
         binding.brightnessProgress.progress = (v * 100).toInt()
+        binding.tvBrightnessPct.text = "${(v * 100).toInt()}%"
         uiHandler.removeCallbacks(gestureHideRunnable)
         uiHandler.postDelayed(gestureHideRunnable, 1500)
     }
