@@ -108,6 +108,32 @@ class PlayerActivity : AppCompatActivity() {
             uiHandler.postDelayed(this, 500)
         }
     }
+    // v6.3.13: REC button blinks red while recording (gold when idle).
+    private var recBlinkOn = false
+    private val recBlinkRunnable = object : Runnable {
+        override fun run() {
+            if (!isRecording) return
+            recBlinkOn = !recBlinkOn
+            binding.btnRec.setTextColor(
+                if (recBlinkOn) 0xFFFF0000.toInt()
+                else 0xFFD4AF37.toInt() // gold
+            )
+            uiHandler.postDelayed(this, 500)
+        }
+    }
+
+    private fun startRecBlink() {
+        uiHandler.removeCallbacks(recBlinkRunnable)
+        recBlinkOn = true
+        binding.btnRec.setTextColor(0xFFFF0000.toInt())
+        uiHandler.postDelayed(recBlinkRunnable, 500)
+    }
+
+    private fun stopRecBlink() {
+        uiHandler.removeCallbacks(recBlinkRunnable)
+        recBlinkOn = false
+        binding.btnRec.setTextColor(0xFFD4AF37.toInt()) // gold
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -1004,6 +1030,7 @@ class PlayerActivity : AppCompatActivity() {
                     override fun onStarted(f: String) {
                         runOnUiThread {
                             isRecording = true
+                            startRecBlink()
                             Toast.makeText(
                                 this@PlayerActivity,
                                 getString(R.string.record_started, f),
@@ -1014,6 +1041,7 @@ class PlayerActivity : AppCompatActivity() {
                     override fun onStopped(f: String, bytes: Long) {
                         runOnUiThread {
                             isRecording = false
+                            stopRecBlink()
                             Toast.makeText(
                                 this@PlayerActivity,
                                 getString(R.string.record_saved, f),
@@ -1024,6 +1052,7 @@ class PlayerActivity : AppCompatActivity() {
                     override fun onError(msg: String) {
                         runOnUiThread {
                             isRecording = false
+                            stopRecBlink()
                             Toast.makeText(
                                 this@PlayerActivity,
                                 getString(R.string.record_failed, msg),
@@ -1051,6 +1080,7 @@ class PlayerActivity : AppCompatActivity() {
         }
         recorder = null
         isRecording = false
+        stopRecBlink()
     }
 
     // v6.3.2: record button removed from the top bar — recording state
@@ -1399,6 +1429,7 @@ class PlayerActivity : AppCompatActivity() {
         }
         recorder = null
         isRecording = false
+        stopRecBlink()
         binding.playerView.player = null
         player?.release()
         player = null
