@@ -57,9 +57,12 @@ class AddProviderActivity : AppCompatActivity() {
         )
     }
 
-    /** v6.3: M3U file picker. */
+    /** v6.3.1: M3U file picker — OpenDocument (ACTION_OPEN_DOCUMENT) so the
+     * URI permission can be persisted. GetContent (ACTION_GET_CONTENT) does
+     * NOT grant persistable permissions, so the file became unreadable
+     * after every app restart ("Permission Denial"). */
     private val pickFile = registerForActivityResult(
-        ActivityResultContracts.GetContent()
+        ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri == null) return@registerForActivityResult
         try {
