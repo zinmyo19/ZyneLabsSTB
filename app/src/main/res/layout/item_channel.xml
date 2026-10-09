@@ -26,4 +26,15 @@
         android:textColor="@color/text_primary"
         android:textSize="18sp" />
 
+    <!-- v6.3: quality badge (4K/FHD/HD/SD). -->
+    <TextView
+        android:id="@+id/tvQuality"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:textColor="@color/gold"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
 </LinearLayout>
