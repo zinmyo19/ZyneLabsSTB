@@ -1,9 +1,11 @@
 package com.zynelabs.stb
 
 import android.Manifest
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -15,14 +17,22 @@ import com.zynelabs.stb.databinding.ActivityAddProviderBinding
  * "Scan QR" fills the URL from a camera QR scan (QrScanActivity).
  * QR payload: plain portal URL, or "url|mac", or "stb://host/path|mac".
  * Saved provider becomes active immediately and home reloads on it.
+ *
+ * v6.2: also edits/deletes providers. Launched with [EXTRA_PROVIDER_ID] it
+ * pre-fills the form for that provider (edit mode) and shows a Delete
+ * button; without it, it's the original add-new flow. This is the single
+ * provider-management screen, reached from Settings → Portal → Provider
+ * settings (D-pad navigable).
  */
 class AddProviderActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityAddProviderBinding
+    private var editId: String? = null
 
     companion object {
         const val EXTRA_QR_URL = "qr_url"
         const val EXTRA_QR_MAC = "qr_mac"
+        const val EXTRA_PROVIDER_ID = "provider_id"
         private const val REQ_QR = 1001
         private const val REQ_CAMERA = 1002
     }
@@ -32,8 +42,20 @@ class AddProviderActivity : AppCompatActivity() {
         binding = ActivityAddProviderBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // v6.2: edit mode when launched with a provider id.
+        editId = intent.getStringExtra(EXTRA_PROVIDER_ID)
+        val existing = editId?.let { ProviderStore.get(this, it) }
+        if (existing != null) {
+            binding.tvTitle.text = getString(R.string.provider_edit_title)
+            binding.etUrl.setText(existing.url)
+            binding.etMac.setText(existing.mac)
+            binding.etName.setText(existing.name)
+            binding.btnDelete.visibility = View.VISIBLE
+        }
+
         binding.btnScanQr.setOnClickListener { startQrScan() }
         binding.btnSave.setOnClickListener { saveProvider() }
+        binding.btnDelete.setOnClickListener { confirmDelete() }
         binding.btnCancel.setOnClickListener { finish() }
     }
 
@@ -91,12 +113,46 @@ class AddProviderActivity : AppCompatActivity() {
             binding.etMac.error = "MAC like 00:1A:79:00:00:00"
             return
         }
-        val p = Provider(ProviderStore.newId(), name, url, mac)
+        // v6.2: edit mode updates the existing provider in place.
+        val p = if (editId != null) {
+            Provider(editId!!, name, url, mac)
+        } else {
+            Provider(ProviderStore.newId(), name, url, mac)
+        }
         ProviderStore.save(this, p)
         ProviderStore.setActive(this, p.id)
         ProviderStore.applyActive(this)
         ListCache.invalidateAll()
-        Toast.makeText(this, "Provider saved", Toast.LENGTH_SHORT).show()
+        Toast.makeText(
+            this,
+            if (editId != null) getString(R.string.provider_updated) else "Provider saved",
+            Toast.LENGTH_SHORT
+        ).show()
         finish()
+    }
+
+    /** v6.2: delete the provider being edited (with confirmation). */
+    private fun confirmDelete() {
+        val id = editId ?: return
+        ProviderStore.get(this, id) ?: return
+        AlertDialog.Builder(this)
+            .setTitle(R.string.delete_provider_title)
+            .setMessage(getString(R.string.delete_provider_confirm))
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                ProviderStore.delete(this, id)
+                if (ProviderStore.getActiveId(this) == id) {
+                    ProviderStore.list(this).firstOrNull()?.let {
+                        ProviderStore.setActive(this, it.id)
+                    }
+                }
+                ProviderStore.applyActive(this)
+                ListCache.invalidateAll()
+                Toast.makeText(
+                    this, getString(R.string.provider_deleted), Toast.LENGTH_SHORT
+                ).show()
+                finish()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 }
