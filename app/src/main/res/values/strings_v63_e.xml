@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v6.3: QR pairing strings (own file per feature conventions). -->
+<resources>
+    <string name="qr_pair_title">Add via QR code</string>
+    <string name="qr_pair_hint">Scan with your phone, then enter the playlist on the web page. The code expires in 5 minutes.</string>
+    <string name="qr_pair_creating">Getting code…</string>
+    <string name="qr_pair_waiting">Waiting for phone…</string>
+    <string name="qr_pair_no_network">No network — retrying…</string>
+    <string name="qr_pair_create_failed">Could not get a code — check network and reopen</string>
+    <string name="qr_pair_bad_payload">Invalid playlist data — try again</string>
+    <string name="qr_pair_received">Playlist received</string>
+    <string name="qr_pair_expired">Code expired — reopen to get a new one</string>
+    <string name="qr_pair_back">Back</string>
+</resources>
