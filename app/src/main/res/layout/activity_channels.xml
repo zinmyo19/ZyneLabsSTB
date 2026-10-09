@@ -98,6 +98,17 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
 
+                <!-- v6.3.2: preview pane — channel logo on top. -->
+                <ImageView
+                    android:id="@+id/ivPreviewLogo"
+                    android:layout_width="120dp"
+                    android:layout_height="120dp"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginBottom="8dp"
+                    android:contentDescription="@null"
+                    android:scaleType="fitCenter"
+                    android:visibility="gone" />
+
                 <TextView
                     android:id="@+id/tvEpgChannel"
                     android:layout_width="wrap_content"
