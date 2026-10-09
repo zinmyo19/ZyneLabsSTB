@@ -133,17 +133,9 @@ class PlayerActivity : AppCompatActivity() {
         binding.tvInfoName.text = binding.tvTitle.text
         binding.tvInfoMeta.text = if (isVod) "VOD" else "Live TV"
 
-        // Top bar
+        // Top bar (v6.3.2: decluttered — all options live in the gear menu).
         binding.btnBack.setOnClickListener { finish() }
-        binding.btnTracks.setOnClickListener { showAudioTracks() }
-        // v6.3: info button — channel/quality/provider/stream dialog.
-        binding.btnInfo.setOnClickListener { showInfoDialog() }
-        // v5.3: PiP + drawers.
-        binding.btnPip.setOnClickListener { enterPip() }
-        // v5.4: record button (FlowPlay function).
-        binding.btnRecord.setOnClickListener { toggleRecording() }
-        binding.btnDrawerSettings.setOnClickListener { openDrawer("settings") }
-        binding.btnDrawerChannels.setOnClickListener { openDrawer("channels") }
+        binding.btnMenu.setOnClickListener { showPlayerMenu() }
 
         // v5.4: swipe gestures (phone only — TV uses D-pad).
         audioManager = getSystemService(AUDIO_SERVICE) as? AudioManager
@@ -166,7 +158,6 @@ class PlayerActivity : AppCompatActivity() {
             bumpHideTimer()
         }
         binding.btnVolume.setOnClickListener { toggleMute(); updateVolumeIcon() }
-        binding.btnLock.setOnClickListener { setLocked(true) }
         updateVolumeIcon()
         // v5.5: ±10s seek buttons are VOD-only (FlowPlay pattern).
         binding.btnRewind.isVisible = isVod
@@ -619,6 +610,38 @@ class PlayerActivity : AppCompatActivity() {
         bumpHideTimer()
     }
 
+    /**
+     * v6.3.2: single gear-menu dialog holding everything the old crowded
+     * top bar did — D-pad navigable via setItems. Clicks dispatch to the
+     * existing functions unchanged.
+     */
+    private fun showPlayerMenu() {
+        val labels = arrayOf(
+            getString(R.string.player_menu_tracks),
+            getString(R.string.player_menu_info),
+            getString(R.string.player_menu_pip),
+            getString(R.string.player_menu_record),
+            getString(R.string.player_menu_settings),
+            getString(R.string.player_menu_channels),
+            getString(R.string.player_menu_lock)
+        )
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(getString(R.string.player_menu_title))
+            .setItems(labels) { _, which ->
+                when (which) {
+                    0 -> showAudioTracks()
+                    1 -> showInfoDialog()
+                    2 -> enterPip()
+                    3 -> toggleRecording()
+                    4 -> openDrawer("settings")
+                    5 -> openDrawer("channels")
+                    6 -> setLocked(true)
+                }
+                bumpHideTimer()
+            }
+            .show()
+    }
+
     // ------------------------------------------------------------ v5.3 PiP
 
     private fun enterPip() {
@@ -783,7 +806,6 @@ class PlayerActivity : AppCompatActivity() {
                     override fun onStarted(f: String) {
                         runOnUiThread {
                             isRecording = true
-                            updateRecordButton()
                             Toast.makeText(
                                 this@PlayerActivity,
                                 getString(R.string.record_started, f),
@@ -794,7 +816,6 @@ class PlayerActivity : AppCompatActivity() {
                     override fun onStopped(f: String, bytes: Long) {
                         runOnUiThread {
                             isRecording = false
-                            updateRecordButton()
                             Toast.makeText(
                                 this@PlayerActivity,
                                 getString(R.string.record_saved, f),
@@ -805,7 +826,6 @@ class PlayerActivity : AppCompatActivity() {
                     override fun onError(msg: String) {
                         runOnUiThread {
                             isRecording = false
-                            updateRecordButton()
                             Toast.makeText(
                                 this@PlayerActivity,
                                 getString(R.string.record_failed, msg),
@@ -833,17 +853,10 @@ class PlayerActivity : AppCompatActivity() {
         }
         recorder = null
         isRecording = false
-        updateRecordButton()
     }
 
-    private fun updateRecordButton() {
-        // v5.5: btnRecord is now an ImageButton (vector) — tint red while
-        // recording, gold otherwise.
-        binding.btnRecord.setColorFilter(
-            if (isRecording) Color.RED else getColor(R.color.gold),
-            android.graphics.PorterDuff.Mode.SRC_IN
-        )
-    }
+    // v6.3.2: record button removed from the top bar — recording state
+    // is now surfaced by the recording Toasts only; the tint line is gone.
 
     // ------------------------------------------------------------ v5.4 FlowPlay extras
 
