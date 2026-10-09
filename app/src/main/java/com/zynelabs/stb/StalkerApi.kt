@@ -25,12 +25,15 @@ import kotlinx.coroutines.delay
  * as dead and ignored (a fresh auth runs instead).
  */
 private const val SESSION_TTL_MS = 12L * 3600L * 1000L
-/** v4.7: rolling window for the handshake cap — 15 min (was 1h in v4.6).
- * The 1h window punished users far too long after v4.5's handshake spam. */
-private const val CAP_WINDOW_MS = 15L * 60L * 1000L
-/** v4.7: max FAILED handshakes per [CAP_WINDOW_MS] per portal+MAC.
- * Only FAILED handshakes count — a handshake that returns a valid token
- * is success, not spam (v4.6 counted every attempt, punishing success). */
+/** v6.2: rolling window for the handshake cap — 1 hour.
+ * v4.7 used 15 min for FAILED handshakes only; Dominic's field test showed
+ * 13 handshakes (10 successful) in 15 min — successful handshakes were
+ * uncapped, and each one invalidates the previous token on
+ * one-session-per-MAC portals. Now ALL handshakes count, max 3/hour. */
+private const val CAP_WINDOW_MS = 60L * 60L * 1000L
+/** v6.2: max handshakes per [CAP_WINDOW_MS] per portal+MAC — ALL attempts
+ * count (success or failure). A successful handshake still invalidates the
+ * previous token server-side, so uncapped success is also spam. */
 private const val CAP_MAX = 3
 /** v4.7: versionCode that introduced the fixed rate limiter. The first run
  * of this version wipes poisoned handshake timestamps — v4.5's
@@ -491,7 +494,7 @@ class StalkerApi(
         // v4.6: session persistence diagnostics.
         sb.appendLine("Session: $debugSessionSource")
         // v4.7: cap counts FAILED handshakes in a 15-min window now.
-        sb.appendLine("Failed handshakes (15 min): ${sessionStore.failedHandshakesInWindow()}")
+        sb.appendLine("Handshakes (1h cap): ${sessionStore.failedHandshakesInWindow()}/3")
         sb.appendLine()
         sb.appendLine("Handshake URL:")
         sb.appendLine(debugHandshakeUrl ?: "(none yet)")
@@ -962,13 +965,16 @@ class StalkerApi(
      * single-element list ({portal}/portal.php) to pin the v2.4 endpoint.
      */
     private suspend fun handshakeOn(candidates: List<String>): String {
-        // v4.7: HARD CAP — max 3 FAILED handshakes per 15 min per
-        // portal+MAC (was: every attempt counted, 1h window — v4.5's
-        // 14-handshake spam poisoned the persisted cap and blocked v4.6).
+        // v6.2: HARD CAP — max 3 handshakes per hour per portal+MAC,
+        // ALL attempts count (v4.7 counted only failures; Dominic's field
+        // test showed 13 handshakes with 10 successes — each success still
+        // invalidates the previous token on one-session-per-MAC portals).
         // checkCap() throws a NON-auth-failure StalkerException so
         // recovery ladders don't catch it — the UI tells the user the
         // actual wait time instead of hammering.
         sessionStore.checkCap()
+        // v6.2: record EVERY handshake attempt against the cap.
+        sessionStore.recordHandshake()
         // v4.6: keep the old token — if THIS handshake fails (network
         // blip), the caller retries with the previous session instead of
         // starting from nothing (restored in the catch below).
@@ -976,10 +982,6 @@ class StalkerApi(
         token = null
         // v4.2: count every handshake attempt (see debugHandshakeCount).
         debugHandshakeCount++
-        // v4.7: NO pre-recording — only a FAILED handshake counts against
-        // the cap. A handshake that returns a valid token is success,
-        // not spam. (v4.6 recorded before attempting, so even successful
-        // handshakes burned the cap.)
         // v4.1: reset the per-session validation capture (first
         // itv/get_ordered_list — see [get]). The StalkerSession singleton
         // reuses this instance across connects, and the auth ladder
@@ -1040,6 +1042,31 @@ class StalkerApi(
                 // portal set a session cookie (cookie hypothesis).
                 android.util.Log.i("StalkerApi", "handshake: jar={${cookieJar.dump()}}")
                 syncTokenCookie() // TOKEN_COOKIE: publish the fresh token
+                // v6.2: validate the endpoint actually serves DATA, not just
+                // a handshake token. Dominic's field test: /server/load.php
+                // handshook fine but get_ordered_list returned empty (body 0);
+                // /c/portal.php served both. A token without data is a
+                // wrong endpoint — try the next candidate.
+                val dataOk = try {
+                    val probe = jsPayload(get("itv", "get_ordered_list", mapOf("p" to "1")))
+                    val d = probe.optJSONArray("data")
+                    d != null && d.length() > 0
+                } catch (e: Exception) {
+                    android.util.Log.w(
+                        "StalkerApi",
+                        "handshake: $candidate token OK but data probe failed " +
+                            "(${(e.message ?: e.javaClass.simpleName).take(60)}), trying next base"
+                    )
+                    false
+                }
+                if (!dataOk) {
+                    android.util.Log.w(
+                        "StalkerApi",
+                        "handshake: $candidate token OK but empty channel data, trying next base"
+                    )
+                    lastError = StalkerException("Handshake OK but no channel data on $candidate")
+                    continue
+                }
                 // v4.6: persist the working session immediately — the token
                 // is reused for everything from now on (no re-handshake
                 // between listing and playing). The auth method may be
@@ -1064,11 +1091,9 @@ class StalkerApi(
         }
         throw lastError ?: StalkerException("Handshake failed on all API bases")
         } catch (e: Exception) {
-            // v4.7: THIS handshake FAILED — record it against the cap
-            // (success is not spam). checkCap()'s own throw never reaches
-            // here (it fires before the try), so cap-blocks don't
-            // self-extend.
-            sessionStore.recordFailedHandshake()
+            // v6.2: cap is recorded at attempt time (see above); checkCap()'s
+            // own throw never reaches here (it fires before the try), so
+            // cap-blocks don't self-extend.
             // v4.6: don't destroy a possibly-good token when THIS handshake
             // fails (network blip, all bases 404) — restore the previous
             // token so the caller retries with the old session instead of
@@ -2165,9 +2190,9 @@ class StalkerApi(
         }
 
         /**
-         * v4.7: throws when the FAILED-handshake cap is reached — NOT an
+         * v6.2: throws when the handshake cap is reached — NOT an
          * auth failure, so recovery ladders must not catch this. The
-         * message carries the actual wait (from the oldest failure in the
+         * message carries the actual wait (from the oldest handshake in the
          * window) so the user knows when to retry.
          */
         fun checkCap() {
@@ -2182,13 +2207,16 @@ class StalkerApi(
             }
         }
 
-        /** v4.7: records a FAILED handshake (success is not spam). */
-        fun recordFailedHandshake() {
+        /** v6.2: records EVERY handshake attempt (success or failure).
+         * Each handshake invalidates the previous token on one-session-per-MAC
+         * portals, so uncapped successful handshakes are also spam. */
+        fun recordHandshake() {
             val times = readTimes()
             times.add(System.currentTimeMillis())
             prefs.edit().putString(hkey, times.joinToString(",")).apply()
         }
 
+        /** v4.7: kept for the debug display (counts handshakes in window). */
         fun failedHandshakesInWindow(): Int = readTimes().size
 
         /**
