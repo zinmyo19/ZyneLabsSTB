@@ -136,6 +136,12 @@ class AddProviderActivity : AppCompatActivity() {
         }
 
         binding.btnScanQr.setOnClickListener { startQrScan() }
+        // v6.3.2: QR pairing moved here from Settings → Providers.
+        // This device SHOWS the code; the phone scans it and submits
+        // the playlist via the web form (QrPairActivity).
+        binding.btnPairQr.setOnClickListener {
+            startActivity(Intent(this, QrPairActivity::class.java))
+        }
         binding.btnChooseFile.setOnClickListener { pickFile.launch(arrayOf("*/*")) }
         binding.btnSave.setOnClickListener { saveProvider() }
         binding.btnDelete.setOnClickListener { confirmDelete() }
