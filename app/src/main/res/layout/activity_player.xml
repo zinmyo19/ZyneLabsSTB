@@ -787,8 +787,8 @@
             android:layout_marginTop="8dp"
             android:clipToPadding="false"
             android:orientation="horizontal"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp" />
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp" />
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/drawerChannelList"
