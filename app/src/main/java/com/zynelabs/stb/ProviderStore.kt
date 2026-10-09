@@ -33,6 +33,9 @@ object ProviderStore {
     const val TYPE_M3U_URL = "m3u_url"
     const val TYPE_M3U_FILE = "m3u_file"
     const val TYPE_XTREAM = "xtream"
+    /** v6.3.3: QR pairing — transient spinner type only, never saved
+     * (QrPairActivity saves the real M3U/Xtream provider after pairing). */
+    const val TYPE_QR = "qr_pair"
 
     private const val FILE = "stb_providers"
     private const val KEY = "providers"
@@ -126,6 +129,7 @@ object ProviderStore {
         TYPE_XTREAM -> "Xtream"
         TYPE_M3U_URL -> "M3U link"
         TYPE_M3U_FILE -> "M3U file"
+        TYPE_QR -> "QR pairing"
         else -> "Stalker"
     }
 
