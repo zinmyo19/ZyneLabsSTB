@@ -1,10 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- v5.4: floating gesture bar background (Imperial gold border). -->
+<!-- v5.7: floating gesture bar background — borderless (his request: no boxy
+     button borders). Soft dark fill, rounded corners, no gold stroke. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <solid android:color="#CC0A0F14" />
-    <stroke
-        android:width="1dp"
-        android:color="#D4AF37" />
     <corners android:radius="14dp" />
 </shape>
