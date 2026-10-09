@@ -55,13 +55,14 @@
         android:padding="8dp"
         android:visibility="gone">
 
-        <ImageButton
+        <Button
             android:id="@+id/btnBack"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Back"
-            android:src="@drawable/ic_back" />
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@drawable/nav_item_selector"
+            android:text="‹"
+            android:textColor="@color/text_primary"
+            android:textSize="28sp" />
 
         <TextView
             android:id="@+id/tvTitle"
@@ -396,7 +397,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|center_horizontal"
         android:layout_marginBottom="16dp"
-        android:background="@drawable/transport_pill"
+        android:background="#B3000000"
         android:orientation="vertical"
         android:paddingStart="12dp"
         android:paddingTop="6dp"
@@ -465,7 +466,7 @@
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Mute"
-                android:src="@drawable/ic_volume_on" />
+                android:src="@drawable/ic_volume" />
         </LinearLayout>
 
         <LinearLayout
@@ -573,13 +574,14 @@
                 android:textSize="18sp"
                 android:textStyle="bold" />
 
-            <ImageButton
+            <Button
                 android:id="@+id/btnDrawerClose"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Close"
-                android:src="@drawable/ic_close" />
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/nav_item_selector"
+                android:text="✕"
+                android:textColor="@color/text_primary"
+                android:textSize="20sp" />
         </LinearLayout>
 
         <!-- v6.3.3: provider switcher at the very top of the drawer. -->
