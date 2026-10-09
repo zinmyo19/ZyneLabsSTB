@@ -1,13 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- v5.5: gold hamburger icon — replaces the ☰ text glyph. -->
+<!-- v5.7: Google Material Icons style (gold #D4AF37, Imperial theme). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
     <path
-        android:strokeColor="#D4AF37"
-        android:strokeWidth="2.2"
-        android:strokeLineCap="round"
-        android:pathData="M4,7 h16 M4,12 h16 M4,17 h16" />
+        android:fillColor="#D4AF37"
+        android:pathData="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" />
 </vector>
