@@ -1217,15 +1217,23 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun refreshStripLabels() {
         binding.btnSpeed.text = Prefs.getPlaybackSpeedLabel(this)
-        binding.btnAudio.text = Prefs.getAudioLangLabel(this)
-        binding.btnSubtitles.text =
-            if (Prefs.getSubtitlesEnabled(this)) getString(R.string.player_strip_subs_on)
-            else getString(R.string.player_strip_subs_off)
+        // v6.3.8: FlowPlay-compact strip — icon-only labels, state via color.
+        binding.btnAudio.text = "♪"
+        val subsOn = Prefs.getSubtitlesEnabled(this)
+        binding.btnSubtitles.text = "CC"
+        binding.btnSubtitles.setTextColor(
+            getColor(if (subsOn) R.color.teal else R.color.text_secondary)
+        )
         binding.btnAspect.text = Prefs.getAspectRatio(this)
-        // v6.3.3: new strip buttons.
-        binding.btnSleep.text = "◷ " + Prefs.getSleepTimer(this)
-        binding.btnZoom.text = "Zoom ${(videoScale * 100).toInt()}%"
-        binding.btnVolumeStrip.text = if (muted) "🔇" else "🔊"
+        val sleepActive = Prefs.getSleepTimer(this) != "Off"
+        binding.btnSleep.text = "◷"
+        binding.btnSleep.setTextColor(
+            getColor(if (sleepActive) R.color.teal else R.color.text_secondary)
+        )
+        binding.btnZoom.text = "${(videoScale * 100).toInt()}%"
+        binding.btnVolumeStrip.setImageResource(
+            if (muted) R.drawable.ic_volume_mute else R.drawable.ic_volume
+        )
     }
 
     private fun showAudioTracks() {
