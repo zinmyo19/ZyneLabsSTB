@@ -7,11 +7,13 @@
     <string name="provider_type_m3u_url">M3U link</string>
     <string name="provider_type_m3u_file">M3U file</string>
     <string name="provider_type_xtream">Xtream login</string>
+    <string name="provider_type_qr">QR pairing</string>
     <string-array name="provider_type_labels">
         <item>@string/provider_type_stalker</item>
         <item>@string/provider_type_m3u_url</item>
         <item>@string/provider_type_m3u_file</item>
         <item>@string/provider_type_xtream</item>
+        <item>@string/provider_type_qr</item>
     </string-array>
 
     <string name="provider_lbl_server_url">Server URL</string>
