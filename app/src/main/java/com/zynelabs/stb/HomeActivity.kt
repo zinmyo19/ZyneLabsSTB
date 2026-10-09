@@ -572,6 +572,13 @@ class HomeActivity : AppCompatActivity() {
                 if (row.genreId != null) openFullList(row.genreId, row.title)
             }
             holder.b.tvRowTitle.isFocusable = row.genreId != null
+            // v6.2: "See all" after every row (D-pad focusable) — opens
+            // the full ChannelListActivity for this genre (or All).
+            holder.b.tvRowSeeAll.setOnClickListener {
+                openFullList(row.genreId, row.title)
+            }
+            // See all is always focusable (works for All + every genre).
+            holder.b.tvRowSeeAll.isFocusable = true
         }
 
         override fun getItemCount(): Int = rows.size
