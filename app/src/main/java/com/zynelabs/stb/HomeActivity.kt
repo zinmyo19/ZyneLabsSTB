@@ -90,7 +90,7 @@ class HomeActivity : AppCompatActivity() {
         binding.headerUserBox.isVisible = isTv
         binding.headerProfile.isVisible = isTv
         binding.tvDpadHints.isVisible = isTv
-        binding.tvPortalInfo.text = getString(R.string.home_portal_info, Prefs.getMac(this))
+        binding.tvPortalInfo.text = providerInfoLine()
 
         // v5.1: header date like mockup ("Thu, 12 Dec • 20:17").
         binding.tvHeaderDate.text = SimpleDateFormat(
@@ -146,10 +146,9 @@ class HomeActivity : AppCompatActivity() {
                     if (picked.id != activeId) {
                         ProviderStore.setActive(this, picked.id)
                         ProviderStore.applyActive(this)
-                        ListCache.invalidateAll()
+                        SourceManager.clearAllCaches(this)
                         refreshProviderChip()
-                        binding.tvPortalInfo.text =
-                            getString(R.string.home_portal_info, Prefs.getMac(this))
+                        binding.tvPortalInfo.text = providerInfoLine()
                         loadSection(forceRefresh = true)
                     }
                 } else {
@@ -268,9 +267,26 @@ class HomeActivity : AppCompatActivity() {
 
     // ------------------------------------------------------------------ loading
 
+    /** v6.3: header line shows the active provider (was: portal MAC). */
+    private fun providerInfoLine(): String {
+        val p = ProviderStore.getActive(this)
+        return if (p == null) {
+            getString(R.string.no_provider)
+        } else {
+            "${ProviderStore.displayName(p)} • ${ProviderStore.typeLabel(p)}"
+        }
+    }
+
     private fun loadSection(forceRefresh: Boolean = false) {
         loadJob?.cancel()
         binding.errorBox.isVisible = false
+
+        // v6.3: never show another provider's (or no provider's) channels.
+        if (!SourceManager.hasProvider(this)) {
+            binding.progressBar.isVisible = false
+            showError(getString(R.string.add_provider_hint))
+            return
+        }
 
         val cachedRows = peekCachedRows()
         if (!cachedRows.isNullOrEmpty()) {
@@ -283,7 +299,7 @@ class HomeActivity : AppCompatActivity() {
 
         loadJob = lifecycleScope.launch {
             try {
-                val api = StalkerSession.get(this@HomeActivity)
+                val api = SourceManager.get(this@HomeActivity)
                 val rows: List<HomeRow> = when (section) {
                     Section.LIVE_TV -> loadLiveRows(api)
                     Section.MOVIES -> loadVodRows(
@@ -328,8 +344,8 @@ class HomeActivity : AppCompatActivity() {
     }
 
     private fun sectionCacheKey(): String {
-        val provider = (Prefs.getPortalUrl(this) + "|" + Prefs.getMac(this)).hashCode()
-            .toString(16)
+        // v6.3: provider-scoped key (was portal_url|mac — broke for M3U/Xtream).
+        val provider = SourceManager.cacheKey(this)
         val sec = when (section) {
             Section.LIVE_TV -> "live"
             Section.MOVIES -> "movies"
@@ -408,7 +424,7 @@ class HomeActivity : AppCompatActivity() {
         return out
     }
 
-    private suspend fun loadLiveRows(api: StalkerApi): List<HomeRow> = coroutineScope {
+    private suspend fun loadLiveRows(api: PlaylistSource): List<HomeRow> = coroutineScope {
         val genres = api.getGenres()
         if (genres.isEmpty()) {
             val all = api.getChannelsPaginated(maxPages = 2)
@@ -431,7 +447,7 @@ class HomeActivity : AppCompatActivity() {
     }
 
     private suspend fun loadVodRows(
-        api: StalkerApi,
+        api: PlaylistSource,
         mode: String,
         title: String
     ): List<HomeRow> {
@@ -477,7 +493,7 @@ class HomeActivity : AppCompatActivity() {
             // (one cheap total_items read) once it arrives.
             lifecycleScope.launch {
                 try {
-                    val api = StalkerSession.get(this@HomeActivity)
+                    val api = SourceManager.get(this@HomeActivity)
                     val real = api.getTotalChannelCount()
                     if (real > 0) {
                         binding.tvBannerSubtitle.text =
@@ -619,6 +635,10 @@ class HomeActivity : AppCompatActivity() {
                     holder.b.tvLogoLetter.text =
                         name.trim().firstOrNull()?.uppercase() ?: "?"
                     holder.b.ivPoster.visibility = View.GONE
+                    // v6.3: quality badge on channel cards; hidden if none.
+                    val q = c.channel.quality
+                    holder.b.tvQuality.text = q
+                    holder.b.tvQuality.isVisible = q.isNotEmpty()
                     ImageLoader.load(
                         c.channel.logo.ifBlank { null },
                         holder.b.ivPoster,
@@ -636,6 +656,8 @@ class HomeActivity : AppCompatActivity() {
                     holder.b.tvLogoLetter.visibility = View.VISIBLE
                     holder.b.tvLogoLetter.text = "\uD83D\uDCC1"
                     holder.b.ivPoster.visibility = View.GONE
+                    // v6.3: category cards are not channels — badge stays gone.
+                    holder.b.tvQuality.isVisible = false
                     ImageLoader.cancel(holder.b.ivPoster)
                 }
             }
