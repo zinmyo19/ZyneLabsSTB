@@ -136,7 +136,7 @@ class AddProviderActivity : AppCompatActivity() {
         }
 
         binding.btnScanQr.setOnClickListener { startQrScan() }
-        binding.btnChooseFile.setOnClickListener { pickFile.launch("*/*") }
+        binding.btnChooseFile.setOnClickListener { pickFile.launch(arrayOf("*/*")) }
         binding.btnSave.setOnClickListener { saveProvider() }
         binding.btnDelete.setOnClickListener { confirmDelete() }
         binding.btnCancel.setOnClickListener { finish() }
