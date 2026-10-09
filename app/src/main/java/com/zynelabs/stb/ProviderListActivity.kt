@@ -131,7 +131,28 @@ class ProviderListActivity : AppCompatActivity() {
             fun bind(p: Provider) {
                 val mark = if (p.id == activeId) "● " else "○ "
                 b.tvTitle.text = mark + ProviderStore.displayName(p)
-                b.tvValue.text = ProviderStore.typeLabel(p)
+                // v6.3.2: show cached expiry + channel count per row.
+                val ctx = b.root.context
+                val cached = ProviderStore.getPortalInfo(ctx, p.id)
+                val typeLabel = ProviderStore.typeLabel(p)
+                b.tvValue.text = if (cached != null) {
+                    val (exp, count) = cached
+                    val expKnown = exp.isNotBlank() && exp != "—"
+                    when {
+                        expKnown && count >= 0 -> ctx.getString(
+                            R.string.provider_row_detail,
+                            typeLabel, exp, count
+                        )
+                        !expKnown && count >= 0 -> ctx.getString(
+                            R.string.provider_row_detail_noexp,
+                            typeLabel, count
+                        )
+                        expKnown -> "$typeLabel · Exp: $exp"
+                        else -> typeLabel
+                    }
+                } else {
+                    typeLabel
+                }
                 b.root.setOnClickListener { onTap(p) }
                 b.root.setOnLongClickListener {
                     onDelete(p)
