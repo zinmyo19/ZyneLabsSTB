@@ -1838,7 +1838,7 @@ class StalkerApi(
             // returned 60 channels but none had tv_genre_id="1350").
             filtered.add(ch)
         }
-        ChannelPage(filtered, raw)
+        return ChannelPage(filtered, raw)
     }
 
     /**
