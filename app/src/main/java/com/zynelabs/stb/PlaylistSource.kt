@@ -2,6 +2,7 @@ package com.zynelabs.stb
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -204,7 +205,10 @@ class M3uSource(
     )
 
     override suspend fun getGenres(): List<StalkerApi.Genre> {
-        val groups = load().map { it.group }.filter { it.isNotBlank() }.distinct()
+        val entries = load()
+        val groups = entries.map { it.group }.filter { it.isNotBlank() }.distinct()
+        // v6.3.11: debug — diagnose "only All Channels" reports.
+        Log.d("M3U", "getGenres: ${entries.size} entries, ${groups.size} groups: $groups")
         return groups.map { StalkerApi.Genre(id = it, title = it) }
     }
 
