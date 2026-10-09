@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v6.3 strings (separate file to keep the big feature merge conflict-free). -->
+<resources>
+    <string name="provider_list_title">Providers</string>
+    <string name="back">Back</string>
+    <string name="clear_cache_row">Clear cache</string>
+    <string name="cache_cleared">Cache cleared</string>
+    <string name="provider_details_row">Provider details</string>
+    <string name="no_provider">No provider configured</string>
+    <string name="add_provider_hint">Add a provider in Settings → Providers to start watching.</string>
+    <string name="cat_view_grid">View: Grid</string>
+    <string name="cat_view_list">View: List</string>
+    <string name="info_section_title">info</string>
+    <string name="pair_qr_title">Add via QR code</string>
+    <string name="pair_qr_hint">Scan with your phone, then enter the playlist on the web page. The code expires in 5 minutes.</string>
+    <string name="pair_waiting">Waiting for phone…</string>
+    <string name="pair_received">Playlist received</string>
+    <string name="pair_expired">Code expired — reopen to get a new one</string>
+</resources>
