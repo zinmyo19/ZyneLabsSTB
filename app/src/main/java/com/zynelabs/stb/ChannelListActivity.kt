@@ -30,6 +30,10 @@ class ChannelListActivity : AppCompatActivity() {
     private lateinit var binding: ActivityChannelsBinding
     private var epgJob: Job? = null
 
+    // v6.3.2: shared per-row "Now/Next" EPG line cache, keyed by channel id.
+    // Value is the display line; "" means the fetch failed → row stays clean.
+    private val epgLineCache = mutableMapOf<String, String>()
+
     private val adapter = ChannelAdapter(
         onClick = { channel -> openPlayer(channel) },
         onFocus = { channel -> loadEpgPanel(channel) }
@@ -125,10 +129,22 @@ class ChannelListActivity : AppCompatActivity() {
         binding.btnRetry.requestFocus()
     }
 
-    /** Loads now/next EPG for the focused channel into the side panel. */
+    /** Loads now/next EPG for the focused channel into the side preview panel. */
     private fun loadEpgPanel(channel: Channel) {
         epgJob?.cancel()
-        binding.tvEpgChannel.text = channel.name
+        // v6.3.2: preview pane — "name • QUALITY" header + channel logo.
+        binding.tvEpgChannel.text = if (channel.quality.isNotBlank()) {
+            "${channel.name} • ${channel.quality}"
+        } else {
+            channel.name
+        }
+        binding.ivPreviewLogo.isVisible = false
+        if (channel.logo.isNotBlank()) {
+            binding.ivPreviewLogo.isVisible = true
+            ImageLoader.load(channel.logo, binding.ivPreviewLogo, onFail = {
+                binding.ivPreviewLogo.isVisible = false
+            })
+        }
         binding.tvEpgNow.text = getString(R.string.epg_loading)
         binding.tvEpgNext.text = ""
         binding.tvEpgDesc.text = ""
@@ -173,7 +189,7 @@ class ChannelListActivity : AppCompatActivity() {
 
     // ------------------------------------------------------------ adapter
 
-    private class ChannelAdapter(
+    private inner class ChannelAdapter(
         private val onClick: (Channel) -> Unit,
         private val onFocus: (Channel) -> Unit
     ) : ListAdapter<Channel, ChannelAdapter.ViewHolder>(DIFF) {
@@ -191,6 +207,13 @@ class ChannelListActivity : AppCompatActivity() {
         inner class ViewHolder(
             private val binding: ItemChannelBinding
         ) : RecyclerView.ViewHolder(binding.root) {
+
+            // v6.3.2: per-row EPG job — MUST be per-holder, not the
+            // activity's epgJob (that one drives the side preview panel;
+            // sharing it made rows cancel the panel and each other).
+            private var rowEpgJob: Job? = null
+
+            private var epgJob: Job? = null
 
             init {
                 binding.root.setOnClickListener {
@@ -219,6 +242,78 @@ class ChannelListActivity : AppCompatActivity() {
                 val q = channel.quality
                 binding.tvQuality.text = q
                 binding.tvQuality.isVisible = q.isNotEmpty()
+
+                // v6.3.2: logo — hidden when blank or when the load fails,
+                // so rows without logos still look clean.
+                binding.ivLogo.isVisible = false
+                if (channel.logo.isNotBlank()) {
+                    binding.ivLogo.isVisible = true
+                    ImageLoader.load(channel.logo, binding.ivLogo, onFail = {
+                        binding.ivLogo.isVisible = false
+                    })
+                }
+
+                // v6.3.2: per-row now/next EPG line — cached, debounced,
+                // best-effort. The position guard stops recycled views
+                // from showing another channel's line.
+                rowEpgJob?.cancel()
+                val cached = epgLineCache[channel.id]
+                if (cached != null) {
+                    binding.tvEpgLine.text = cached
+                    binding.tvEpgLine.isVisible = cached.isNotEmpty()
+                } else {
+                    binding.tvEpgLine.isVisible = false
+                    val tag = channel.id
+                    rowEpgJob = lifecycleScope.launch {
+                        delay(300) // let fast D-pad scrolling settle
+                        try {
+                            val api = SourceManager.get(this@ChannelListActivity)
+                            val programs = api.getEpg(tag, todayString())
+                            val ctx = binding.root.context
+                            val line = if (programs.isEmpty()) {
+                                ctx.getString(R.string.epg_none)
+                            } else {
+                                buildString {
+                                    val nowName = programs.getOrNull(0)?.name
+                                        .orEmpty()
+                                    val nextName = programs.getOrNull(1)?.name
+                                    if (nowName.isNotEmpty()) {
+                                        append(
+                                            ctx.getString(
+                                                R.string.epg_now, nowName
+                                            )
+                                        )
+                                    }
+                                    if (!nextName.isNullOrEmpty()) {
+                                        if (isNotEmpty()) append(" • ")
+                                        append(
+                                            ctx.getString(
+                                                R.string.epg_next, nextName
+                                            )
+                                        )
+                                    }
+                                    if (isEmpty()) {
+                                        append(ctx.getString(R.string.epg_none))
+                                    }
+                                }
+                            }
+                            epgLineCache[tag] = line
+                            val pos = bindingAdapterPosition
+                            if (pos != RecyclerView.NO_POSITION &&
+                                getItem(pos).id == tag
+                            ) {
+                                binding.tvEpgLine.text = line
+                                binding.tvEpgLine.isVisible = line.isNotEmpty()
+                            }
+                        } catch (e: Exception) {
+                            epgLineCache[tag] = ""
+                        }
+                    }
+                }
+            }
+
+            fun cancelEpg() {
+                rowEpgJob?.cancel()
             }
         }
 
@@ -231,6 +326,11 @@ class ChannelListActivity : AppCompatActivity() {
 
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             holder.bind(getItem(position))
+        }
+
+        override fun onViewRecycled(holder: ViewHolder) {
+            holder.cancelEpg()
+            super.onViewRecycled(holder)
         }
     }
 }
