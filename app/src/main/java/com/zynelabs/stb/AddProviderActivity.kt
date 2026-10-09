@@ -1,9 +1,7 @@
 package com.zynelabs.stb
 
-import android.Manifest
 import android.app.AlertDialog
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
@@ -11,8 +9,6 @@ import android.widget.AdapterView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import com.zynelabs.stb.databinding.ActivityAddProviderBinding
 
 /**
@@ -42,18 +38,15 @@ class AddProviderActivity : AppCompatActivity() {
     private var fileUri: Uri? = null
 
     companion object {
-        const val EXTRA_QR_URL = "qr_url"
-        const val EXTRA_QR_MAC = "qr_mac"
         const val EXTRA_PROVIDER_ID = "provider_id"
-        private const val REQ_QR = 1001
-        private const val REQ_CAMERA = 1002
 
         /** Spinner positions must match the @array/provider_type_labels order. */
         private val TYPE_BY_POSITION = listOf(
             ProviderStore.TYPE_STALKER,
             ProviderStore.TYPE_M3U_URL,
             ProviderStore.TYPE_M3U_FILE,
-            ProviderStore.TYPE_XTREAM
+            ProviderStore.TYPE_XTREAM,
+            ProviderStore.TYPE_QR
         )
     }
 
@@ -135,11 +128,9 @@ class AddProviderActivity : AppCompatActivity() {
             showSection(selectedType)
         }
 
-        binding.btnScanQr.setOnClickListener { startQrScan() }
-        // v6.3.2: QR pairing moved here from Settings → Providers.
-        // This device SHOWS the code; the phone scans it and submits
-        // the playlist via the web form (QrPairActivity).
-        binding.btnPairQr.setOnClickListener {
+        // v6.3.3: QR pairing is a provider TYPE now — the QR section's
+        // button launches the pairing flow (phone scans, submits playlist).
+        binding.btnShowQr.setOnClickListener {
             startActivity(Intent(this, QrPairActivity::class.java))
         }
         binding.btnChooseFile.setOnClickListener { pickFile.launch(arrayOf("*/*")) }
@@ -158,53 +149,22 @@ class AddProviderActivity : AppCompatActivity() {
             if (type == ProviderStore.TYPE_M3U_FILE) View.VISIBLE else View.GONE
         binding.sectionXtream.visibility =
             if (type == ProviderStore.TYPE_XTREAM) View.VISIBLE else View.GONE
-    }
-
-    private fun startQrScan() {
-        if (packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
-                PackageManager.PERMISSION_GRANTED
-            ) {
-                startActivityForResult(
-                    Intent(this, QrScanActivity::class.java), REQ_QR
-                )
-            } else {
-                ActivityCompat.requestPermissions(
-                    this, arrayOf(Manifest.permission.CAMERA), REQ_CAMERA
-                )
-            }
-        } else {
-            Toast.makeText(this, "No camera on this device", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQ_CAMERA &&
-            grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED
-        ) {
-            startActivityForResult(Intent(this, QrScanActivity::class.java), REQ_QR)
-        }
-    }
-
-    @Deprecated("use Activity Result API on next touch")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQ_QR && resultCode == RESULT_OK && data != null) {
-            data.getStringExtra(EXTRA_QR_URL)?.takeIf { it.isNotBlank() }?.let {
-                binding.etUrl.setText(it)
-            }
-            data.getStringExtra(EXTRA_QR_MAC)?.takeIf { it.isNotBlank() }?.let {
-                binding.etMac.setText(it)
-            }
-        }
+        // v6.3.3: QR pairing is a provider type — its own section with the
+        // "Show QR code" button. Nothing to save, so hide the Save button.
+        val isQr = type == ProviderStore.TYPE_QR
+        binding.sectionQr.visibility = if (isQr) View.VISIBLE else View.GONE
+        binding.btnSave.visibility = if (isQr) View.GONE else View.VISIBLE
     }
 
     private fun saveProvider() {
         val name = binding.etName.text.toString().trim()
         val type = selectedType
+        // v6.3.3: QR pairing is transient — it is never saved as a provider
+        // (QrPairActivity saves the real M3U/Xtream provider after pairing).
+        if (type == ProviderStore.TYPE_QR) {
+            startActivity(Intent(this, QrPairActivity::class.java))
+            return
+        }
         val p = when (type) {
             ProviderStore.TYPE_M3U_URL -> {
                 val url = binding.etM3uUrl.text.toString().trim().trimEnd('/')
