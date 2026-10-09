@@ -74,82 +74,17 @@
             android:textSize="11sp"
             android:textStyle="bold" />
 
-        <Button
-            android:id="@+id/btnTracks"
-            android:layout_width="wrap_content"
-            android:layout_height="48dp"
-            android:background="@drawable/nav_item_selector"
-            android:focusable="true"
-            android:paddingStart="14dp"
-            android:paddingEnd="14dp"
-            android:text="@string/tracks_button"
-            android:textColor="@color/gold"
-            android:textSize="13sp" />
-
-        <!-- v6.3: info button — channel/quality/provider/stream dialog. -->
-        <Button
-            android:id="@+id/btnInfo"
-            android:layout_width="wrap_content"
-            android:layout_height="48dp"
-            android:layout_marginStart="8dp"
-            android:background="@drawable/nav_item_selector"
-            android:focusable="true"
-            android:paddingStart="14dp"
-            android:paddingEnd="14dp"
-            android:text="@string/info_button"
-            android:textColor="@color/gold"
-            android:textSize="13sp" />
-
+        <!-- v6.3.2: top bar decluttered — tracks/info/pip/record/settings/
+             channels/lock moved into the gear menu. -->
         <ImageButton
-            android:id="@+id/btnPip"
+            android:id="@+id/btnMenu"
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:layout_marginStart="8dp"
             android:background="@drawable/nav_item_selector"
-            android:contentDescription="@string/pip_button"
-            android:focusable="true"
-            android:src="@drawable/ic_pip" />
-
-        <ImageButton
-            android:id="@+id/btnRecord"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_marginStart="8dp"
-            android:background="@drawable/nav_item_selector"
-            android:contentDescription="@string/record_button"
-            android:focusable="true"
-            android:src="@drawable/ic_record" />
-
-        <ImageButton
-            android:id="@+id/btnDrawerSettings"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_marginStart="8dp"
-            android:background="@drawable/nav_item_selector"
-            android:contentDescription="@string/settings_button"
+            android:contentDescription="Player options"
             android:focusable="true"
             android:src="@drawable/ic_nav_settings" />
-
-        <ImageButton
-            android:id="@+id/btnDrawerChannels"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_marginStart="8dp"
-            android:background="@drawable/nav_item_selector"
-            android:contentDescription="@string/channels_button"
-            android:focusable="true"
-            android:src="@drawable/ic_menu" />
-
-        <!-- v5.5: screen lock (FlowPlay) — blocks accidental touches. -->
-        <ImageButton
-            android:id="@+id/btnLock"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_marginStart="8dp"
-            android:background="@drawable/nav_item_selector"
-            android:contentDescription="@string/lock_button"
-            android:focusable="true"
-            android:src="@drawable/ic_lock" />
     </LinearLayout>
 
     <!-- ===== Info box (with controls) ===== -->
@@ -181,12 +116,14 @@
             android:textSize="12sp" />
     </LinearLayout>
 
-    <!-- ===== Bottom: settings strip + transport ===== -->
+    <!-- ===== Bottom: settings strip + transport (v6.3.2: centered
+         floating pill, FlowPlay style) ===== -->
     <LinearLayout
         android:id="@+id/bottomControls"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="16dp"
         android:background="#B3000000"
         android:orientation="vertical"
         android:padding="12dp">
@@ -194,8 +131,9 @@
         <!-- Inline settings strip -->
         <LinearLayout
             android:id="@+id/settingsStrip"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
             android:layout_marginBottom="8dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
@@ -221,10 +159,11 @@
                 android:text="16:9" />
         </LinearLayout>
 
-        <!-- Transport -->
+        <!-- Transport (v6.3.2: centered row inside the floating pill) -->
         <LinearLayout
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
@@ -311,13 +250,13 @@
                 android:textColor="@color/text_primary"
                 android:textSize="13sp" />
 
+            <!-- v6.3.2: fixed 220dp (wrap_content parent) instead of weight. -->
             <SeekBar
                 android:id="@+id/seekBar"
-                android:layout_width="0dp"
+                android:layout_width="220dp"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
                 android:layout_marginEnd="8dp"
-                android:layout_weight="1"
                 android:focusable="true"
                 android:max="1000"
                 android:progressTint="@color/gold"
