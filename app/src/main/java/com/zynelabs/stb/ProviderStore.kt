@@ -129,6 +129,46 @@ object ProviderStore {
         else -> "Stalker"
     }
 
+    /**
+     * v6.3.2: last-known portal info per provider (expiry + channel
+     * count), cached when "Provider details" is viewed. Shown in the
+     * provider switcher list so Dominic sees exp date + count per row
+     * without a network round-trip per provider.
+     */
+    private const val KEY_INFO = "portal_info"
+
+    fun savePortalInfo(
+        ctx: Context, providerId: String,
+        expireDate: String, channelCount: Int
+    ) {
+        val all = try {
+            JSONObject(
+                prefs(ctx).getString(KEY_INFO, "{}").orEmpty()
+            )
+        } catch (_: Exception) {
+            JSONObject()
+        }
+        all.put(
+            providerId,
+            JSONObject()
+                .put("exp", expireDate)
+                .put("count", channelCount)
+        )
+        prefs(ctx).edit().putString(KEY_INFO, all.toString()).apply()
+    }
+
+    /** Returns Pair(expireDate, channelCount) or null when never cached. */
+    fun getPortalInfo(ctx: Context, providerId: String): Pair<String, Int>? {
+        return try {
+            val o = JSONObject(
+                prefs(ctx).getString(KEY_INFO, "{}").orEmpty()
+            ).optJSONObject(providerId) ?: return null
+            Pair(o.optString("exp"), o.optInt("count", -1))
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     /** v6.3: does this provider need a network login? (M3U file is offline.) */
     fun needsNetwork(p: Provider): Boolean = p.type != TYPE_M3U_FILE
 
