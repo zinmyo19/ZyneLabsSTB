@@ -34,6 +34,18 @@
             android:textSize="26sp"
             android:textStyle="bold" />
 
+        <!-- v6.3: grid/list view toggle (D-pad focusable). -->
+        <Button
+            android:id="@+id/btnViewToggle"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/nav_item_selector"
+            android:focusable="true"
+            android:text="@string/cat_view_grid"
+            android:textColor="@color/text_primary"
+            android:textSize="14sp" />
+
     </LinearLayout>
 
     <FrameLayout
