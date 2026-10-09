@@ -33,8 +33,13 @@ private const val SESSION_TTL_MS = 12L * 3600L * 1000L
 private const val CAP_WINDOW_MS = 60L * 60L * 1000L
 /** v6.2: max handshakes per [CAP_WINDOW_MS] per portal+MAC — ALL attempts
  * count (success or failure). A successful handshake still invalidates the
- * previous token server-side, so uncapped success is also spam. */
-private const val CAP_MAX = 3
+ * previous token server-side, so uncapped success is also spam.
+ * v6.3.15: raised 3 → 6/hour. The v6.3.15 empty-data self-heal
+ * (getGenres/fetchChannelPage forcing one re-handshake on HTTP 200 +
+ * empty data) legitimately burns an extra handshake per incident; with
+ * CAP_MAX=3 a flaky portal could lock the user out for an hour. 6 keeps
+ * runaway-loop protection while giving self-heal headroom. */
+private const val CAP_MAX = 6
 /** v4.7: versionCode that introduced the fixed rate limiter. The first run
  * of this version wipes poisoned handshake timestamps — v4.5's
  * 14-handshake spam was persisted and blocked v4.6 from ever handshaking. */
@@ -1766,7 +1771,33 @@ class StalkerApi(
     private suspend fun fetchChannelPage(
         page: Int,
         genreId: String?
-    ): ChannelPage = withSession {
+    ): ChannelPage {
+        val first = withSession { fetchChannelPageRaw(page, genreId) }
+        // v6.3.15: empty-data self-heal — same dead-session signal as
+        // getGenres(), but ONLY for unfiltered page 1. A genre-filtered
+        // page may legitimately be empty (portal ID spaces differ), and
+        // must not burn a handshake. Second consecutive empty is accepted
+        // as genuine.
+        if (page == 1 && genreId.isNullOrBlank() &&
+            first.filtered.isEmpty() && first.raw.isEmpty()
+        ) {
+            android.util.Log.w(
+                "StalkerApi",
+                "fetchChannelPage p=1 unfiltered: HTTP 200 + empty data — " +
+                    "treating as dead session, one forced re-handshake + " +
+                    "single retry"
+            )
+            handshakeIfStale(null, force = true)
+            persistSession()
+            return withSession { fetchChannelPageRaw(page, genreId) }
+        }
+        return first
+    }
+
+    private suspend fun fetchChannelPageRaw(
+        page: Int,
+        genreId: String?
+    ): ChannelPage {
         // v5.9: log the genre being requested — the empty categories bug
         // needs to know exactly which genreId went on the wire.
         android.util.Log.i(
@@ -1784,7 +1815,7 @@ class StalkerApi(
                 "returned " + (data?.length()?.toString() ?: "null") + " items"
         )
         if (data == null || data.length() == 0) {
-            return@withSession ChannelPage(emptyList(), emptyList())
+            return ChannelPage(emptyList(), emptyList())
         }
         val raw = ArrayList<Channel>(data.length())
         val filtered = ArrayList<Channel>(data.length())
@@ -1941,8 +1972,29 @@ class StalkerApi(
     data class Genre(val id: String, val title: String)
 
     /** Returns TV genres from the portal. Empty list when unsupported. */
-    suspend fun getGenres(): List<Genre> = withSession {
-        val data = jsArray(get("itv", "get_genres")) ?: return@withSession emptyList()
+    suspend fun getGenres(): List<Genre> {
+        val first = withSession { fetchGenresRaw() }
+        if (first.isNotEmpty()) return first
+        // v6.3.15: empty-data self-heal. A portal answering HTTP 200 with an
+        // empty data array on itv/get_genres almost always means a dead
+        // session (OTT Navigator/STBEmu re-handshake on exactly this
+        // signal). Force ONE re-handshake (cap-checked) and retry ONCE
+        // before accepting the empty result — this removes the manual
+        // Reconnect escape hatch for the empty-list bug. A second
+        // consecutive empty is accepted as genuine (portal really has no
+        // genres), NOT escalated to an auth error.
+        android.util.Log.w(
+            "StalkerApi",
+            "getGenres: HTTP 200 + empty data — treating as dead session, " +
+                "one forced re-handshake + single retry"
+        )
+        handshakeIfStale(null, force = true)
+        persistSession()
+        return withSession { fetchGenresRaw() }
+    }
+
+    private suspend fun fetchGenresRaw(): List<Genre> {
+        val data = jsArray(get("itv", "get_genres")) ?: return emptyList()
         val list = ArrayList<Genre>(data.length())
         for (i in 0 until data.length()) {
             val o = data.getJSONObject(i)
@@ -1951,7 +2003,7 @@ class StalkerApi(
                 list.add(Genre(id = o.optString("id"), title = title))
             }
         }
-        list
+        return list
     }
 
     // ----------------------------------------------------------------- EPG
