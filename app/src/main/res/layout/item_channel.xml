@@ -10,31 +10,71 @@
     android:orientation="horizontal"
     android:padding="14dp">
 
-    <TextView
-        android:id="@+id/tvNumber"
-        android:layout_width="52dp"
-        android:layout_height="wrap_content"
-        android:textColor="@color/gold"
-        android:textSize="16sp"
-        android:textStyle="bold" />
+    <!-- v6.3.2: channel logo (hidden when the channel has none or it fails to load). -->
+    <ImageView
+        android:id="@+id/ivLogo"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_marginEnd="12dp"
+        android:contentDescription="@null"
+        android:scaleType="fitCenter"
+        android:visibility="gone" />
 
-    <TextView
-        android:id="@+id/tvName"
+    <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:textColor="@color/text_primary"
-        android:textSize="18sp" />
+        android:orientation="vertical">
 
-    <!-- v6.3: quality badge (4K/FHD/HD/SD). -->
-    <TextView
-        android:id="@+id/tvQuality"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="8dp"
-        android:textColor="@color/gold"
-        android:textSize="14sp"
-        android:textStyle="bold"
-        android:visibility="gone" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tvNumber"
+                android:layout_width="52dp"
+                android:layout_height="wrap_content"
+                android:textColor="@color/gold"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvName"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/text_primary"
+                android:textSize="18sp" />
+
+            <!-- v6.3: quality badge (4K/FHD/HD/SD). -->
+            <TextView
+                android:id="@+id/tvQuality"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:textColor="@color/gold"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+        </LinearLayout>
+
+        <!-- v6.3.2: now/next EPG line (gone when there is no info). -->
+        <TextView
+            android:id="@+id/tvEpgLine"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
+    </LinearLayout>
 
 </LinearLayout>
