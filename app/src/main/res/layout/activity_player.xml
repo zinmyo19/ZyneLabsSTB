@@ -462,7 +462,7 @@
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Mute"
-                android:src="@drawable/ic_volume" />
+                android:src="@drawable/ic_volume_custom" />
         </LinearLayout>
 
         <LinearLayout
