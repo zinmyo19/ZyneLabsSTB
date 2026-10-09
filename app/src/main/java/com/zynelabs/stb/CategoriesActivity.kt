@@ -3,6 +3,7 @@ package com.zynelabs.stb
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
@@ -95,6 +96,18 @@ class CategoriesActivity : AppCompatActivity() {
                 val api = SourceManager.get(this@CategoriesActivity)
                 val genres = api.getGenres()
                 if (genres.isEmpty()) {
+                    // v6.3.14: diagnostics — a stale/unknown-type provider
+                    // silently falling back to StalkerSource shows up here
+                    // as "No categories found". Log the provider so the
+                    // mismatch is visible in on-device logs.
+                    val ap = ProviderStore.getActive(this@CategoriesActivity)
+                    Log.w(
+                        "Categories",
+                        "empty genres: provider id=${ap?.id} " +
+                            "type='${ap?.type}' name='${ap?.name}' " +
+                            "url='${ap?.url}' filePath='${ap?.filePath}' " +
+                            "source=${api.javaClass.simpleName}"
+                    )
                     binding.tvError.text = getString(R.string.error_no_categories)
                     binding.tvError.isVisible = true
                     binding.btnRetry.isVisible = true
