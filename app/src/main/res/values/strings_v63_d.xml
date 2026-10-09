@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v6.3-d: strings for the player "info" button + dialog. -->
+<resources>
+    <string name="info_button">Info</string>
+    <string name="info_dialog_title">info</string>
+    <string name="info_label_channel">Channel</string>
+    <string name="info_label_quality">Quality</string>
+    <string name="info_label_provider">Provider</string>
+    <string name="info_label_stream">Stream</string>
+</resources>
