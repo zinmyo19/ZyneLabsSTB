@@ -40,6 +40,8 @@
     <string name="section_providers">Providers</string>
     <string name="provider_add_row">Add provider…</string>
     <string name="provider_delete_row">Delete provider…</string>
+    <string name="provider_reconnect_row">Reconnect…</string>
+    <string name="provider_reconnected">Reconnected</string>
     <string name="provider_delete_title">Delete provider</string>
     <string name="provider_switched">Switched to %1$s</string>
     <string name="portal_url_label">Stalker Portal URL</string>
