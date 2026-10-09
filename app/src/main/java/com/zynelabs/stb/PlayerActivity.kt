@@ -15,9 +15,6 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowInsets
-import android.view.WindowInsetsController
-import android.view.WindowManager
 import android.widget.SeekBar
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -137,20 +134,18 @@ class PlayerActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // v6.3.3: true edge-to-edge — video + UI draw BEHIND the camera
-        // notch/cutout, immersive sticky.
-        // v6.3.12: ALWAYS (not SHORT_EDGES) — in landscape the notch sits on
-        // a LONG edge, so SHORT_EDGES never covered it.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            window.attributes.layoutInDisplayCutoutMode =
-                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
-        }
+        // v6.3.15: cutout mode comes from the theme
+        // (android:windowLayoutInDisplayCutoutMode=always). The programmatic
+        // window.attributes override used in v6.3.3–v6.3.14 is REMOVED — on
+        // MIUI it conflicted with the theme and the player stopped at the
+        // notch (grey bar) while HomeActivity, with zero window code, went
+        // fully fullscreen. PlayerActivity now matches HomeActivity.
         binding = ActivityPlayerBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        // v6.3.4: defer immersive until the DecorView is attached —
-        // calling window.insetsController in onCreate before this threw NPE
-        // on some devices (v6.3.3 launch crash).
-        window.decorView.post { applyImmersive() }
+        // Best-effort immersive; safe to call right after setContentView
+        // (decorView exists then — the v6.3.3 NPE was insetsController's
+        // getter, which is no longer used).
+        runCatching { applyImmersive() }
 
         val cmd = intent.getStringExtra(EXTRA_CMD).orEmpty()
         channelName = intent.getStringExtra(EXTRA_NAME).orEmpty()
@@ -744,33 +739,24 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     /**
-     * v6.3.3: true edge-to-edge — hide system bars, immersive sticky,
-     * re-applied on focus (system gestures can clear it).
-     * v6.3.4: null-safe — window.insetsController's getter itself throws
-     * NPE when the DecorView isn't attached yet (v6.3.3 launch crash), so
-     * guard with peekDecorView() + runCatching; callers defer/re-apply.
+     * v6.3.15: simplified — hide system bars only, nothing else. Cutout mode
+     * comes from the theme (android:windowLayoutInDisplayCutoutMode=always).
+     * Uses the legacy systemUiVisibility flags on ALL API levels: the
+     * insetsController approach used in v6.3.3–v6.3.14 conflicted with MIUI
+     * and broke notch fullscreen, while the legacy flags are what
+     * HomeActivity-era code relied on and are the most reliable on MIUI.
+     * Re-applied on focus (system gestures can clear it).
      */
     private fun applyImmersive() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (window.peekDecorView() == null) return
-            runCatching {
-                window.insetsController?.let {
-                    it.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
-                    it.systemBarsBehavior =
-                        WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                }
-            }
-        } else {
-            @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility = (
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                    or View.SYSTEM_UI_FLAG_FULLSCREEN
-                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                    or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                )
-        }
+        @Suppress("DEPRECATION")
+        window.decorView.systemUiVisibility = (
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                or View.SYSTEM_UI_FLAG_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            )
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
