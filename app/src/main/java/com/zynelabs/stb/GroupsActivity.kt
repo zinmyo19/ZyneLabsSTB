@@ -49,7 +49,7 @@ class GroupsActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                val api = StalkerSession.get(this@GroupsActivity)
+                val api = SourceManager.get(this@GroupsActivity)
                 val genres = api.getGenres()
                 val rows = ArrayList<RowItem>(genres.size + 1)
                 rows.add(RowItem(ALL_ID, getString(R.string.all_channels)))
