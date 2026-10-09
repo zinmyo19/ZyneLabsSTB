@@ -116,7 +116,9 @@
             android:src="@drawable/ic_pip" />
     </LinearLayout>
 
-    <!-- Info box: bottom-LEFT just above the transport pill, FULLY OPAQUE. -->
+    <!-- Info box: bottom-LEFT just above the transport pill.
+         v6.3.7: NO background box (FlowPlay-style, content floats on video).
+         Text shadows keep text readable on bright video. -->
     <LinearLayout
         android:id="@+id/infoBox"
         android:layout_width="wrap_content"
@@ -124,7 +126,6 @@
         android:layout_gravity="bottom|start"
         android:layout_marginStart="16dp"
         android:layout_marginBottom="134dp"
-        android:background="@drawable/info_box_background"
         android:maxWidth="440dp"
         android:minWidth="300dp"
         android:orientation="vertical"
@@ -148,6 +149,10 @@
                 android:paddingTop="3dp"
                 android:paddingEnd="8dp"
                 android:paddingBottom="3dp"
+                android:shadowColor="#AA000000"
+                android:shadowDx="1"
+                android:shadowDy="1"
+                android:shadowRadius="2"
                 android:textColor="@color/gold"
                 android:textSize="12sp"
                 android:textStyle="bold"
@@ -160,6 +165,10 @@
                 android:layout_weight="1"
                 android:ellipsize="end"
                 android:maxLines="1"
+                android:shadowColor="#AA000000"
+                android:shadowDx="1"
+                android:shadowDy="1"
+                android:shadowRadius="2"
                 android:textColor="#FFFFFF"
                 android:textSize="17sp"
                 android:textStyle="bold" />
@@ -174,6 +183,10 @@
                 android:paddingTop="3dp"
                 android:paddingEnd="8dp"
                 android:paddingBottom="3dp"
+                android:shadowColor="#AA000000"
+                android:shadowDx="1"
+                android:shadowDy="1"
+                android:shadowRadius="2"
                 android:text="● LIVE"
                 android:textColor="#FFFFFF"
                 android:textSize="11sp"
@@ -189,6 +202,10 @@
                 android:paddingTop="3dp"
                 android:paddingEnd="8dp"
                 android:paddingBottom="3dp"
+                android:shadowColor="#AA000000"
+                android:shadowDx="1"
+                android:shadowDy="1"
+                android:shadowRadius="2"
                 android:textColor="@color/teal"
                 android:textSize="12sp"
                 android:textStyle="bold"
@@ -203,6 +220,10 @@
             android:layout_marginTop="6dp"
             android:ellipsize="end"
             android:maxLines="1"
+            android:shadowColor="#AA000000"
+            android:shadowDx="1"
+            android:shadowDy="1"
+            android:shadowRadius="2"
             android:text="@string/player_no_schedule"
             android:textColor="@color/text_secondary"
             android:textSize="14sp" />
@@ -267,9 +288,10 @@
                 android:textSize="18sp" />
         </LinearLayout>
 
-        <!-- Row 4: gear-expanded settings strip (horizontal scroll). -->
+        <!-- Row 4: gear-expanded settings strip (horizontal scroll).
+             v6.3.7: compact wrap_content (ZynePlay-style), extras behind ⋯ overflow. -->
         <HorizontalScrollView
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
             android:scrollbars="none">
@@ -361,7 +383,8 @@
                     android:minWidth="64dp"
                     android:text="Stats"
                     android:textColor="@color/teal"
-                    android:textSize="14sp" />
+                    android:textSize="14sp"
+                    android:visibility="gone" />
 
                 <Button
                     android:id="@+id/btnExternal"
@@ -371,7 +394,8 @@
                     android:minWidth="56dp"
                     android:text="⤢"
                     android:textColor="@color/teal"
-                    android:textSize="16sp" />
+                    android:textSize="16sp"
+                    android:visibility="gone" />
 
                 <Button
                     android:id="@+id/btnDrawerSettings"
@@ -381,7 +405,21 @@
                     android:minWidth="56dp"
                     android:text="☰"
                     android:textColor="@color/teal"
-                    android:textSize="16sp" />
+                    android:textSize="16sp"
+                    android:visibility="gone" />
+
+                <!-- v6.3.7: overflow for the less-used settings. -->
+                <Button
+                    android:id="@+id/btnMore"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="More settings"
+                    android:minWidth="56dp"
+                    android:text="⋯"
+                    android:textColor="@color/gold"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
             </LinearLayout>
         </HorizontalScrollView>
     </LinearLayout>
@@ -462,7 +500,7 @@
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Mute"
-                android:src="@drawable/ic_volume_custom" />
+                android:src="@drawable/ic_volume" />
         </LinearLayout>
 
         <LinearLayout
@@ -505,6 +543,15 @@
         android:layout_height="wrap_content"
         android:layout_gravity="center_vertical|end"
         android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/ivVolumeIcon"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_gravity="top|center_horizontal"
+            android:layout_marginBottom="8dp"
+            android:contentDescription="Volume"
+            android:src="@drawable/ic_volume_custom" />
 
         <ProgressBar
             android:id="@+id/volumeProgress"
