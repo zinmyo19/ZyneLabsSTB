@@ -11,8 +11,8 @@ android {
         applicationId = "com.zynelabs.stb"
         minSdk = 24
         targetSdk = 34
-        versionCode = 62
-        versionName = "6.3.7"
+        versionCode = 63
+        versionName = "6.3.8"
     }
 
     signingConfigs {
