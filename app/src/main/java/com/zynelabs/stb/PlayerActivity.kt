@@ -15,6 +15,9 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
+import android.view.WindowInsetsController
+import android.view.WindowManager
 import android.widget.SeekBar
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -108,6 +111,13 @@ class PlayerActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // v6.3.3: true edge-to-edge — video + UI draw BEHIND the camera
+        // notch/cutout (SHORT_EDGES), immersive sticky.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.attributes.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
+        applyImmersive()
         binding = ActivityPlayerBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -131,11 +141,54 @@ class PlayerActivity : AppCompatActivity() {
 
         binding.tvTitle.text = channelName.ifBlank { getString(R.string.unknown_channel) }
         binding.tvInfoName.text = binding.tvTitle.text
-        binding.tvInfoMeta.text = if (isVod) "VOD" else "Live TV"
+        updateInfoBoxBadges()
 
-        // Top bar (v6.3.2: decluttered — all options live in the gear menu).
+        // v6.3.3 top bar: back | title + LIVE | TV(channels) / lock / pip.
         binding.btnBack.setOnClickListener { finish() }
-        binding.btnMenu.setOnClickListener { showPlayerMenu() }
+        binding.btnDrawerTv.setOnClickListener { openDrawer("channels"); bumpHideTimer() }
+        binding.btnLockTop.setOnClickListener { setLocked(true); bumpHideTimer() }
+        binding.btnPipTop.setOnClickListener { enterPip(); bumpHideTimer() }
+
+        // v6.3.3 info box action row: REC / info / EPG / favorite / gear.
+        binding.btnRec.setOnClickListener { toggleRecording(); bumpHideTimer() }
+        binding.btnInfo.setOnClickListener { showInfoDialog(); bumpHideTimer() }
+        binding.btnEpg.setOnClickListener {
+            startActivity(Intent(this, GuideActivity::class.java))
+            bumpHideTimer()
+        }
+        binding.btnFav.setOnClickListener { toggleFavorite(); bumpHideTimer() }
+        binding.btnGear.setOnClickListener {
+            // Gear expands/collapses the second settings row.
+            binding.settingsStrip2.isVisible = !binding.settingsStrip2.isVisible
+            bumpHideTimer()
+        }
+        // v6.3.3 settings strip (gear-expanded): every STB player setting,
+        // organized — nothing dropped.
+        binding.btnSleep.setOnClickListener {
+            Prefs.cycleSleepTimer(this)
+            startSleepTimer()
+            refreshStripLabels()
+            bumpHideTimer()
+        }
+        binding.btnZoom.setOnClickListener {
+            cycleZoom()
+            refreshStripLabels()
+            bumpHideTimer()
+        }
+        binding.btnVolumeStrip.setOnClickListener {
+            toggleMute()
+            updateVolumeIcon()
+            refreshStripLabels()
+            bumpHideTimer()
+        }
+        binding.btnStats.setOnClickListener { showStatsDialog(); bumpHideTimer() }
+        binding.btnExternal.setOnClickListener { openExternal(); bumpHideTimer() }
+        binding.btnDrawerSettings.setOnClickListener { openDrawer("settings"); bumpHideTimer() }
+        refreshFavStar()
+
+        // v6.3.3: channels drawer — provider switcher at the top + close.
+        binding.btnDrawerProvider.setOnClickListener { showDrawerProviderDialog() }
+        binding.btnDrawerClose.setOnClickListener { closeDrawers(); bumpHideTimer() }
 
         // v5.4: swipe gestures (phone only — TV uses D-pad).
         audioManager = getSystemService(AUDIO_SERVICE) as? AudioManager
@@ -217,6 +270,7 @@ class PlayerActivity : AppCompatActivity() {
         }
 
         showControls()
+        loadInfoBoxEpg()
         resolveAndPlay(cmd)
     }
 
@@ -235,6 +289,8 @@ class PlayerActivity : AppCompatActivity() {
         binding.topBar.isVisible = false
         binding.infoBox.isVisible = false
         binding.bottomControls.isVisible = false
+        // v6.3.3: the gear-expanded settings strip collapses with controls.
+        binding.settingsStrip2.isVisible = false
         uiHandler.removeCallbacks(progressRunnable)
     }
 
@@ -373,6 +429,16 @@ class PlayerActivity : AppCompatActivity() {
         target.translationX = target.width.toFloat().takeIf { it > 0 } ?: 340f
         target.animate().translationX(0f).setDuration(220).start()
         if (which == "channels") {
+            // v6.3.3: provider switcher at the top of the drawer.
+            val active = ProviderStore.getActive(this)
+            binding.btnDrawerProvider.text = if (active != null) {
+                getString(
+                    R.string.player_drawer_provider,
+                    ProviderStore.displayName(active)
+                )
+            } else {
+                "Provider"
+            }
             loadDrawerGenres()
             binding.drawerChannelList.requestFocus()
         } else {
@@ -429,8 +495,15 @@ class PlayerActivity : AppCompatActivity() {
                 val api = SourceManager.get(this@PlayerActivity)
                 // v5.3: full pagination — every channel in the genre.
                 drawerChannels = api.getChannelsPaginated(genreId = genreId)
+                val currentId = currentChannel?.id
                 val items = drawerChannels.map {
-                    RowItem(it.id, it.name.ifBlank { getString(R.string.unknown_channel) }, it.number)
+                    RowItem(
+                        it.id,
+                        it.name.ifBlank { getString(R.string.unknown_channel) },
+                        it.number,
+                        // v6.3.3: current channel highlighted red (FlowPlay-style).
+                        highlight = it.id == currentId
+                    )
                 }
                 drawerChannelAdapter.submitList(items)
             } catch (e: Exception) {
@@ -452,7 +525,9 @@ class PlayerActivity : AppCompatActivity() {
         channelName = ch.name
         binding.tvTitle.text = channelName.ifBlank { getString(R.string.unknown_channel) }
         binding.tvInfoName.text = binding.tvTitle.text
-        binding.tvInfoMeta.text = if (isVod) "VOD" else "Live TV"
+        updateInfoBoxBadges()
+        refreshFavStar()
+        loadInfoBoxEpg()
         drawerGenreId = ch.genreId.ifBlank { drawerGenreId }
         showControls()
         resolveAndPlay(ch.cmd, currentCmdType)
@@ -611,31 +686,114 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     /**
-     * v6.3.2: single gear-menu dialog holding everything the old crowded
-     * top bar did — D-pad navigable via setItems. Clicks dispatch to the
-     * existing functions unchanged.
+     * v6.3.3: true edge-to-edge — hide system bars, immersive sticky,
+     * re-applied on focus (system gestures can clear it).
      */
-    private fun showPlayerMenu() {
-        val labels = arrayOf(
-            getString(R.string.player_menu_tracks),
-            getString(R.string.player_menu_info),
-            getString(R.string.player_menu_pip),
-            getString(R.string.player_menu_record),
-            getString(R.string.player_menu_settings),
-            getString(R.string.player_menu_channels),
-            getString(R.string.player_menu_lock)
-        )
+    private fun applyImmersive() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.insetsController?.let {
+                it.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                it.systemBarsBehavior =
+                    WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    or View.SYSTEM_UI_FLAG_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                )
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) applyImmersive()
+    }
+
+    /**
+     * v6.3.3: info box badges — channel-number badge + quality badge.
+     * Hidden when the data is absent.
+     */
+    private fun updateInfoBoxBadges() {
+        val ch = currentChannel
+        val number = ch?.number.orEmpty()
+        binding.tvChannelBadge.isVisible = number.isNotBlank()
+        if (number.isNotBlank()) {
+            binding.tvChannelBadge.text = getString(R.string.player_channel_badge, number)
+        }
+        val quality = QualityBadge.fromName(ch?.name.orEmpty())
+        binding.tvQualityBadge.isVisible = quality.isNotBlank()
+        binding.tvQualityBadge.text = quality
+        binding.badgeLiveInfo.isVisible = !isVod
+    }
+
+    /** v6.3.3: favorite star in the info box action row. */
+    private fun refreshFavStar() {
+        binding.btnFav.text =
+            if (Prefs.isFavorite(this, currentChannel?.id.orEmpty())) "★" else "☆"
+    }
+
+    /** v6.3.3: schedule/EPG line in the info box. */
+    private var epgLineJob: Job? = null
+    private fun loadInfoBoxEpg() {
+        epgLineJob?.cancel()
+        val ch = currentChannel
+        binding.tvEpgLine.text = getString(R.string.player_no_schedule)
+        if (ch == null || ch.id.isBlank() || isVod) return
+        epgLineJob = lifecycleScope.launch {
+            delay(300)
+            try {
+                val api = SourceManager.get(this@PlayerActivity)
+                val programs = api.getEpg(ch.id, ChannelListActivity.todayString())
+                val now = programs.getOrNull(0)
+                val next = programs.getOrNull(1)
+                binding.tvEpgLine.text = when {
+                    now == null -> getString(R.string.player_no_schedule)
+                    next != null -> getString(
+                        R.string.epg_now, now.name
+                    ) + "  ·  " + getString(R.string.epg_next, next.name)
+                    else -> getString(R.string.epg_now, now.name)
+                }
+            } catch (e: Exception) {
+                binding.tvEpgLine.text = getString(R.string.player_no_schedule)
+            }
+        }
+    }
+
+    /**
+     * v6.3.3: provider switcher at the top of the channels drawer.
+     * Switching reloads the drawer on the new provider; the current
+     * channel keeps playing until the user picks a channel.
+     */
+    private fun showDrawerProviderDialog() {
+        val providers = ProviderStore.list(this)
+        if (providers.isEmpty()) return
+        val activeId = ProviderStore.getActiveId(this)
+        val items = providers.map {
+            (if (it.id == activeId) "● " else "○ ") + ProviderStore.displayName(it)
+        }.toTypedArray()
         androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle(getString(R.string.player_menu_title))
-            .setItems(labels) { _, which ->
-                when (which) {
-                    0 -> showAudioTracks()
-                    1 -> showInfoDialog()
-                    2 -> enterPip()
-                    3 -> toggleRecording()
-                    4 -> openDrawer("settings")
-                    5 -> openDrawer("channels")
-                    6 -> setLocked(true)
+            .setTitle("Provider")
+            .setItems(items) { _, which ->
+                val picked = providers[which]
+                if (picked.id != activeId) {
+                    ProviderStore.setActive(this, picked.id)
+                    ProviderStore.applyActive(this)
+                    SourceManager.clearAllCaches(this)
+                    binding.btnDrawerProvider.text = getString(
+                        R.string.player_drawer_provider,
+                        ProviderStore.displayName(picked)
+                    )
+                    loadDrawerGenres()
+                    Toast.makeText(
+                        this,
+                        "Provider: ${ProviderStore.displayName(picked)}",
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
                 bumpHideTimer()
             }
@@ -926,6 +1084,7 @@ class PlayerActivity : AppCompatActivity() {
             getString(if (nowFav) R.string.fav_added else R.string.fav_removed, ch.name),
             Toast.LENGTH_SHORT
         ).show()
+        refreshFavStar()
         bumpHideTimer()
     }
 
@@ -1023,8 +1182,13 @@ class PlayerActivity : AppCompatActivity() {
         binding.btnSpeed.text = Prefs.getPlaybackSpeedLabel(this)
         binding.btnAudio.text = Prefs.getAudioLangLabel(this)
         binding.btnSubtitles.text =
-            if (Prefs.getSubtitlesEnabled(this)) "Subs: On" else "Subs: Off"
+            if (Prefs.getSubtitlesEnabled(this)) getString(R.string.player_strip_subs_on)
+            else getString(R.string.player_strip_subs_off)
         binding.btnAspect.text = Prefs.getAspectRatio(this)
+        // v6.3.3: new strip buttons.
+        binding.btnSleep.text = "◷ " + Prefs.getSleepTimer(this)
+        binding.btnZoom.text = "Zoom ${(videoScale * 100).toInt()}%"
+        binding.btnVolumeStrip.text = if (muted) "🔇" else "🔊"
     }
 
     private fun showAudioTracks() {
