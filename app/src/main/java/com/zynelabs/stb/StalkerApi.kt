@@ -343,6 +343,23 @@ class StalkerApi(
     @Volatile var debugLastListBodyHead: String? = null
         private set
 
+    /**
+     * v5.9: LAST genre-FILTERED get_ordered_list diagnostics — the empty
+     * categories bug: unfiltered (genre=*) works but genre=<id> returns
+     * empty. Tracked separately from the unfiltered "Last get_ordered_list"
+     * so the exact filtered wire shape isn't overwritten by Home loads.
+     */
+    @Volatile var debugLastGenreId: String? = null
+        private set
+    @Volatile var debugLastGenreListUrl: String? = null
+        private set
+    @Volatile var debugLastGenreHttpCode: Int? = null
+        private set
+    @Volatile var debugLastGenreBodyLen: Int = 0
+        private set
+    @Volatile var debugLastGenreBodyHead: String? = null
+        private set
+
     /** v5.8: redacts a token= query param (TOKEN_PARAM auth) for logs. */
     private fun redactTokenParam(url: String): String =
         url.replace(Regex("([?&]token=)[^&]*"), "$1***")
@@ -504,6 +521,15 @@ class StalkerApi(
         sb.appendLine("HTTP code: ${debugLastListHttpCode?.toString() ?: "(none yet)"}")
         sb.appendLine("Body length: $debugLastListBodyLen")
         sb.appendLine("Body (200 chars): ${debugLastListBodyHead ?: "(none yet)"}")
+        sb.appendLine()
+        // v5.9: last genre-FILTERED query — the empty categories bug
+        // (genre=* works, genre=<id> returns empty) is diagnosed here.
+        sb.appendLine("Last genre query:")
+        sb.appendLine("Genre ID: ${debugLastGenreId ?: "(none yet)"}")
+        sb.appendLine("URL: ${debugLastGenreListUrl ?: "(none yet)"}")
+        sb.appendLine("HTTP code: ${debugLastGenreHttpCode?.toString() ?: "(none yet)"}")
+        sb.appendLine("Body length: $debugLastGenreBodyLen")
+        sb.appendLine("Body (200 chars): ${debugLastGenreBodyHead ?: "(none yet)"}")
         return sb.toString()
     }
 
@@ -745,6 +771,18 @@ class StalkerApi(
                 debugLastListBodyLen = body.length
                 debugLastListBodyHead = if (body.isBlank()) "(empty)"
                 else body.replace(Regex("\\s+"), " ").take(200)
+                // v5.9: track genre-FILTERED queries separately — the empty
+                // categories bug (genre=* works, genre=<id> empty) needs the
+                // filtered wire shape, not overwritten by unfiltered loads.
+                val genreParam = url.queryParameter("genre")
+                if (!genreParam.isNullOrBlank() && genreParam != "*") {
+                    debugLastGenreId = genreParam
+                    debugLastGenreListUrl = redactTokenParam(url.toString())
+                    debugLastGenreHttpCode = code
+                    debugLastGenreBodyLen = body.length
+                    debugLastGenreBodyHead = if (body.isBlank()) "(empty)"
+                    else body.replace(Regex("\\s+"), " ").take(200)
+                }
             }
             if (!response.isSuccessful) {
                 throw StalkerException("Portal HTTP $code")
@@ -1683,10 +1721,22 @@ class StalkerApi(
         page: Int,
         genreId: String?
     ): ChannelPage = withSession {
+        // v5.9: log the genre being requested — the empty categories bug
+        // needs to know exactly which genreId went on the wire.
+        android.util.Log.i(
+            "StalkerApi",
+            "fetchChannelPage p=$page genreId=$genreId"
+        )
         val extra = mutableMapOf("p" to page.toString())
         if (!genreId.isNullOrBlank()) extra["genre"] = genreId
         val js = jsPayload(get("itv", "get_ordered_list", extra))
         val data = js.optJSONArray("data")
+        // v5.9: log what the portal returned for this genre.
+        android.util.Log.i(
+            "StalkerApi",
+            "fetchChannelPage p=$page genreId=$genreId " +
+                "returned ${data?.length() ?: "null"} items"
+        )
         if (data == null || data.length() == 0) {
             return@withSession ChannelPage(emptyList(), emptyList())
         }
