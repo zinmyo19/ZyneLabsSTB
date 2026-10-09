@@ -27,11 +27,13 @@ class QrScanActivity : AppCompatActivity() {
                 if (text.isNotBlank() && !done) {
                     done = true
                     val (url, mac) = parsePayload(text)
+                    // v6.3.3: local result keys (AddProviderActivity no longer
+                    // hosts the camera-scan flow; this activity is unused).
                     setResult(
                         RESULT_OK,
                         Intent()
-                            .putExtra(AddProviderActivity.EXTRA_QR_URL, url)
-                            .putExtra(AddProviderActivity.EXTRA_QR_MAC, mac)
+                            .putExtra("qr_url", url)
+                            .putExtra("qr_mac", mac)
                     )
                     finish()
                 }
