@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v6.3-a: strings for the type-aware Add/Edit Provider screen. -->
+<resources>
+    <string name="provider_add_title">Add Provider</string>
+    <string name="provider_type_label">Provider type</string>
+    <string name="provider_type_stalker">Stalker portal</string>
+    <string name="provider_type_m3u_url">M3U link</string>
+    <string name="provider_type_m3u_file">M3U file</string>
+    <string name="provider_type_xtream">Xtream login</string>
+    <string-array name="provider_type_labels">
+        <item>@string/provider_type_stalker</item>
+        <item>@string/provider_type_m3u_url</item>
+        <item>@string/provider_type_m3u_file</item>
+        <item>@string/provider_type_xtream</item>
+    </string-array>
+
+    <string name="provider_lbl_server_url">Server URL</string>
+    <string name="provider_lbl_playlist_url">Playlist URL</string>
+    <string name="provider_lbl_username">Username</string>
+    <string name="provider_lbl_password">Password</string>
+    <string name="provider_lbl_name">Name (optional)</string>
+    <string name="provider_btn_choose_file">Choose file</string>
+    <string name="provider_no_file_chosen">No file chosen</string>
+    <string name="provider_saved">Provider saved</string>
+
+    <string name="provider_err_url">Enter a valid URL starting with http</string>
+    <string name="provider_err_mac">MAC like 00:1A:79:00:00:00</string>
+    <string name="provider_err_required">This field is required</string>
+    <string name="provider_err_choose_file">Choose an M3U file first</string>
+</resources>
