@@ -189,20 +189,21 @@ class ChannelListActivity : AppCompatActivity() {
 
     // ------------------------------------------------------------ adapter
 
+    /** v6.3.2: DIFF lives here (not in a companion) because
+     * ChannelAdapter is inner (needs epgLineCache/lifecycleScope)
+     * and inner classes cannot declare companions. */
+    private val channelDiff = object : DiffUtil.ItemCallback<Channel>() {
+        override fun areItemsTheSame(old: Channel, new: Channel): Boolean =
+            old.id == new.id
+
+        override fun areContentsTheSame(old: Channel, new: Channel): Boolean =
+            old == new
+    }
+
     private inner class ChannelAdapter(
         private val onClick: (Channel) -> Unit,
         private val onFocus: (Channel) -> Unit
-    ) : ListAdapter<Channel, ChannelAdapter.ViewHolder>(DIFF) {
-
-        companion object {
-            val DIFF = object : DiffUtil.ItemCallback<Channel>() {
-                override fun areItemsTheSame(old: Channel, new: Channel): Boolean =
-                    old.id == new.id
-
-                override fun areContentsTheSame(old: Channel, new: Channel): Boolean =
-                    old == new
-            }
-        }
+    ) : ListAdapter<Channel, ChannelAdapter.ViewHolder>(channelDiff) {
 
         inner class ViewHolder(
             private val binding: ItemChannelBinding
