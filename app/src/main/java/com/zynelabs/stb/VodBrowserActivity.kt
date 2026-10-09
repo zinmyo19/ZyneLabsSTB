@@ -89,7 +89,7 @@ class VodBrowserActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                val api = StalkerSession.get(this@VodBrowserActivity)
+                val api = SourceManager.get(this@VodBrowserActivity)
                 val rows: List<RowItem>
                 val catId = categoryId
                 if (catId == null) {
@@ -132,7 +132,7 @@ class VodBrowserActivity : AppCompatActivity() {
 
     /** v4.9: series falls back to title-filtered VOD when the series module is empty. */
     private suspend fun fetchCategories(
-        api: StalkerApi
+        api: PlaylistSource
     ): List<StalkerApi.VodCategory> {
         var cats = api.getVodCategories(vodType)
         if (cats.isEmpty() && vodType == "series") {
@@ -150,15 +150,15 @@ class VodBrowserActivity : AppCompatActivity() {
     }
 
     private suspend fun fetchItems(
-        api: StalkerApi,
+        api: PlaylistSource,
         catId: String
     ): List<StalkerApi.VodItem> = api.getVodList(vodType, catId)
 
     // ------------------------------------------------------------ caching
 
     private fun cacheKey(suffix: String): String {
-        val provider = (Prefs.getPortalUrl(this) + "|" + Prefs.getMac(this)).hashCode()
-            .toString(16)
+        // v6.3: provider-scoped key (was portal_url|mac — broke for M3U/Xtream).
+        val provider = SourceManager.cacheKey(this)
         return "vod_${provider}_${vodType}_$suffix"
     }
 
