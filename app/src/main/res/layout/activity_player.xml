@@ -558,8 +558,7 @@
                 android:layout_height="wrap_content"
                 android:text="00:00"
                 android:textColor="#FFFFFF"
-                android:textSize="12sp"
-                android:visibility="gone" />
+                android:textSize="12sp" />
 
             <SeekBar
                 android:id="@+id/seekBar"
@@ -574,8 +573,7 @@
                 android:layout_height="wrap_content"
                 android:text="LIVE"
                 android:textColor="#FFFFFF"
-                android:textSize="12sp"
-                android:visibility="gone" />
+                android:textSize="12sp" />
         </LinearLayout>
     </LinearLayout>
 
