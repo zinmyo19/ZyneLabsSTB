@@ -187,6 +187,8 @@ class PlayerActivity : AppCompatActivity() {
         binding.btnStats.setOnClickListener { showStatsDialog(); bumpHideTimer() }
         binding.btnExternal.setOnClickListener { openExternal(); bumpHideTimer() }
         binding.btnDrawerSettings.setOnClickListener { openDrawer("settings"); bumpHideTimer() }
+        // v6.3.7: ⋯ overflow — stats / external player / player settings drawer.
+        binding.btnMore.setOnClickListener { v -> showMoreMenu(v); bumpHideTimer() }
         refreshFavStar()
 
         // v6.3.3: channels drawer — provider switcher at the top + close.
@@ -634,6 +636,24 @@ class PlayerActivity : AppCompatActivity() {
         }
         refreshDrawerSettings()
         refreshStripLabels()
+    }
+
+    /** v6.3.7: ⋯ overflow menu for the less-used settings (stats, external player,
+        player-settings drawer). D-pad navigable PopupMenu. */
+    private fun showMoreMenu(anchor: android.view.View) {
+        val popup = android.widget.PopupMenu(this, anchor)
+        popup.menu.add(0, 1, 0, "Playback stats")
+        popup.menu.add(0, 2, 1, "Open in external player")
+        popup.menu.add(0, 3, 2, "Player settings")
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                1 -> { showStatsDialog(); true }
+                2 -> { openExternal(); true }
+                3 -> { openDrawer("settings"); true }
+                else -> false
+            }
+        }
+        popup.show()
     }
 
     /** v5.5: playback stats dialog (FlowPlay) — bitrate, resolution, codec. */
@@ -1147,10 +1167,10 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     /** v5.5: volume/mute button icon follows mute state (FlowPlay SpeakerIcon).
-        v6.3.6: unmuted icon = Dominic's custom volume icon. */
+        v6.3.7: reverted to original ic_volume (custom icon moved to swipe indicator). */
     private fun updateVolumeIcon() {
         binding.btnVolume.setImageResource(
-            if (muted) R.drawable.ic_volume_mute else R.drawable.ic_volume_custom
+            if (muted) R.drawable.ic_volume_mute else R.drawable.ic_volume
         )
     }
 
