@@ -99,7 +99,7 @@ class QrPairActivity : AppCompatActivity() {
         http.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) return null
             return try {
-                JSONObject(resp.body.string()).optString("code").ifBlank { null }
+                JSONObject(resp.body?.string().orEmpty()).optString("code").ifBlank { null }
             } catch (_: Exception) {
                 null
             }
@@ -176,7 +176,7 @@ class QrPairActivity : AppCompatActivity() {
                 if (resp.code == 404) return StatusResult.Expired
                 if (!resp.isSuccessful) return StatusResult.Pending
                 val obj = try {
-                    JSONObject(resp.body.string())
+                    JSONObject(resp.body?.string().orEmpty())
                 } catch (_: Exception) {
                     return StatusResult.Pending
                 }
