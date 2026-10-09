@@ -1754,12 +1754,12 @@ class StalkerApi(
                 genreId = chGenreId
             )
             raw.add(ch)
-            // Client-side filter: the portal may ignore the genre
-            // param and return unfiltered pages. Lenient: keep the
-            // channel when its genre is blank (can't verify).
-            if (genreId.isNullOrBlank() || chGenreId.isBlank() || chGenreId == genreId) {
-                filtered.add(ch)
-            }
+            // v6.0: Trust the portal's server-side genre filter. The portal
+            // returned these channels for our genre=<id> query — client-side
+            // re-filtering broke categories when the portal's tv_genre_id
+            // space differs from the get_genres IDs (field test: genre=1350
+            // returned 60 channels but none had tv_genre_id="1350").
+            filtered.add(ch)
         }
         ChannelPage(filtered, raw)
     }
