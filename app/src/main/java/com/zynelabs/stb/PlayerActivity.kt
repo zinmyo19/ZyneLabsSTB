@@ -1199,14 +1199,16 @@ class PlayerActivity : AppCompatActivity() {
         val pos = p.currentPosition
         if (isVod && dur > 0) {
             binding.seekBar.isVisible = true
+            binding.tvPosition.isVisible = true
+            binding.tvDuration.isVisible = true
             binding.seekBar.progress = (pos * 1000 / dur).toInt().coerceIn(0, 1000)
             binding.tvPosition.text = fmtTime(pos)
             binding.tvDuration.text = fmtTime(dur)
         } else {
-            // Live: no seeking.
+            // Live: hide seek row entirely.
             binding.seekBar.isVisible = false
-            binding.tvPosition.text = fmtTime(pos)
-            binding.tvDuration.text = "LIVE"
+            binding.tvPosition.isVisible = false
+            binding.tvDuration.isVisible = false
         }
     }
 
