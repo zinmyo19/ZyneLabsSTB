@@ -125,7 +125,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|start"
         android:layout_marginStart="16dp"
-        android:layout_marginBottom="16dp"
+        android:layout_marginBottom="40dp"
         android:maxWidth="360dp"
         android:minWidth="300dp"
         android:orientation="vertical"
