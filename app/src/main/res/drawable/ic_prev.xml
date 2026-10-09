@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- v5.5: gold previous-track icon. -->
+<!-- v5.7: Google Material Icons style (gold #D4AF37, Imperial theme). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
@@ -7,5 +7,5 @@
     android:viewportHeight="24">
     <path
         android:fillColor="#D4AF37"
-        android:pathData="M6,5 h2.5 v14 h-2.5 z M18,5 L9.5,12 L18,19 z" />
+        android:pathData="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
 </vector>
