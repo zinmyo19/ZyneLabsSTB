@@ -116,13 +116,14 @@
             android:src="@drawable/ic_pip" />
     </LinearLayout>
 
-    <!-- Info box: bottom-center above the transport pill, FULLY OPAQUE. -->
+    <!-- Info box: bottom-LEFT just above the transport pill, FULLY OPAQUE. -->
     <LinearLayout
         android:id="@+id/infoBox"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="168dp"
+        android:layout_gravity="bottom|start"
+        android:layout_marginStart="16dp"
+        android:layout_marginBottom="134dp"
         android:background="@drawable/info_box_background"
         android:maxWidth="440dp"
         android:minWidth="300dp"
@@ -569,26 +570,40 @@
                 android:textSize="18sp"
                 android:textStyle="bold" />
 
-            <Button
+            <!-- v6.3.6: TextView (Button got the theme's gold backgroundTint,
+                 same bug as v6.3.4's top bar). -->
+            <TextView
                 android:id="@+id/btnDrawerClose"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="@drawable/nav_item_selector"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
                 android:text="✕"
                 android:textColor="@color/text_primary"
                 android:textSize="20sp" />
         </LinearLayout>
 
-        <!-- v6.3.3: provider switcher at the very top of the drawer. -->
-        <Button
+        <!-- v6.3.3: provider switcher at the very top of the drawer.
+             v6.3.6: TextView (Button got the theme's gold backgroundTint). -->
+        <TextView
             android:id="@+id/btnDrawerProvider"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginStart="12dp"
             android:layout_marginEnd="12dp"
             android:background="@drawable/badge_dim"
+            android:clickable="true"
             android:ellipsize="end"
+            android:focusable="true"
+            android:gravity="center_vertical"
             android:maxLines="1"
+            android:minHeight="48dp"
+            android:paddingStart="12dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="8dp"
             android:textColor="@color/gold"
             android:textSize="14sp" />
 
