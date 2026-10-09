@@ -86,10 +86,18 @@
         <activity
             android:name=".AddProviderActivity"
             android:exported="false" />
+        <!-- v6.3: provider management hub. -->
+        <activity
+            android:name=".ProviderListActivity"
+            android:exported="false" />
         <activity
             android:name=".QrScanActivity"
             android:exported="false"
             android:screenOrientation="portrait" />
+        <!-- v6.3: QR pairing — TV displays the code, phone submits the playlist. -->
+        <activity
+            android:name=".QrPairActivity"
+            android:exported="false" />
 
     </application>
 
