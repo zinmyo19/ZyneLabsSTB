@@ -88,7 +88,8 @@
             android:text="● LIVE"
             android:textColor="#FFFFFF"
             android:textSize="11sp"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            android:visibility="gone" />
 
         <ImageButton
             android:id="@+id/btnDrawerTv"
@@ -250,7 +251,7 @@
                 android:paddingBottom="4dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:text="@string/player_action_rec"
-                android:textColor="#E53935"
+                android:textColor="@color/gold"
                 android:textSize="14sp"
                 android:textStyle="bold" />
 
@@ -508,7 +509,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|center_horizontal"
         android:layout_marginBottom="16dp"
-        android:background="#FF0A0F14"
+        android:background="#FF000000"
         android:orientation="vertical"
         android:paddingStart="12dp"
         android:paddingTop="6dp"
@@ -721,7 +722,7 @@
         android:layout_width="320dp"
         android:layout_height="match_parent"
         android:layout_gravity="end"
-        android:background="#FF0A0F14"
+        android:background="#FF000000"
         android:orientation="vertical"
         android:translationX="340dp"
         android:visibility="gone">
@@ -822,7 +823,7 @@
         android:layout_width="320dp"
         android:layout_height="match_parent"
         android:layout_gravity="end"
-        android:background="@color/background"
+        android:background="#FF000000"
         android:orientation="vertical"
         android:padding="16dp"
         android:translationX="340dp"
