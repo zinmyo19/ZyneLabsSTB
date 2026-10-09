@@ -304,76 +304,113 @@
                 android:orientation="horizontal"
                 android:visibility="gone">
 
+                <!-- v6.3.8: FlowPlay-compact 40dp icon squares (was full-width text buttons). -->
                 <Button
                     android:id="@+id/btnSubtitles"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="3dp"
+                    android:layout_marginEnd="3dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:minWidth="56dp"
+                    android:gravity="center"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:padding="0dp"
                     android:text="CC"
-                    android:textColor="@color/teal"
-                    android:textSize="14sp"
+                    android:textColor="@color/gold"
+                    android:textSize="13sp"
                     android:textStyle="bold" />
 
                 <Button
                     android:id="@+id/btnSleep"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="3dp"
+                    android:layout_marginEnd="3dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:minWidth="56dp"
-                    android:text="◷ Off"
-                    android:textColor="@color/teal"
-                    android:textSize="14sp" />
+                    android:gravity="center"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:padding="0dp"
+                    android:text="◷"
+                    android:textColor="@color/gold"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
 
                 <Button
                     android:id="@+id/btnSpeed"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="3dp"
+                    android:layout_marginEnd="3dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:minWidth="56dp"
+                    android:gravity="center"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:padding="0dp"
                     android:text="1x"
-                    android:textColor="@color/teal"
-                    android:textSize="14sp"
+                    android:textColor="@color/gold"
+                    android:textSize="13sp"
                     android:textStyle="bold" />
 
                 <Button
                     android:id="@+id/btnAudio"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="3dp"
+                    android:layout_marginEnd="3dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:minWidth="56dp"
+                    android:gravity="center"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:padding="0dp"
                     android:text="♪"
-                    android:textColor="@color/teal"
-                    android:textSize="16sp" />
+                    android:textColor="@color/gold"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
 
                 <Button
                     android:id="@+id/btnAspect"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="3dp"
+                    android:layout_marginEnd="3dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:minWidth="64dp"
+                    android:gravity="center"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:padding="0dp"
                     android:text="16:9"
-                    android:textColor="@color/teal"
-                    android:textSize="14sp" />
+                    android:textColor="@color/gold"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
 
                 <Button
                     android:id="@+id/btnZoom"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="3dp"
+                    android:layout_marginEnd="3dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:minWidth="64dp"
-                    android:text="Zoom"
-                    android:textColor="@color/teal"
-                    android:textSize="14sp" />
+                    android:gravity="center"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:padding="0dp"
+                    android:text="100%"
+                    android:textColor="@color/gold"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
 
-                <Button
+                <ImageButton
                     android:id="@+id/btnVolumeStrip"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="3dp"
+                    android:layout_marginEnd="3dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:minWidth="56dp"
-                    android:text="🔊"
-                    android:textSize="16sp" />
+                    android:contentDescription="Mute"
+                    android:padding="8dp"
+                    android:src="@drawable/ic_volume" />
 
                 <Button
                     android:id="@+id/btnStats"
@@ -411,14 +448,19 @@
                 <!-- v6.3.7: overflow for the less-used settings. -->
                 <Button
                     android:id="@+id/btnMore"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="3dp"
+                    android:layout_marginEnd="3dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="More settings"
-                    android:minWidth="56dp"
+                    android:gravity="center"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:padding="0dp"
                     android:text="⋯"
                     android:textColor="@color/gold"
-                    android:textSize="18sp"
+                    android:textSize="16sp"
                     android:textStyle="bold" />
             </LinearLayout>
         </HorizontalScrollView>
@@ -543,15 +585,6 @@
         android:layout_height="wrap_content"
         android:layout_gravity="center_vertical|end"
         android:visibility="gone">
-
-        <ImageView
-            android:id="@+id/ivVolumeIcon"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:layout_gravity="top|center_horizontal"
-            android:layout_marginBottom="8dp"
-            android:contentDescription="Volume"
-            android:src="@drawable/ic_volume_custom" />
 
         <ProgressBar
             android:id="@+id/volumeProgress"
