@@ -136,6 +136,8 @@ class PlayerActivity : AppCompatActivity() {
         // Top bar
         binding.btnBack.setOnClickListener { finish() }
         binding.btnTracks.setOnClickListener { showAudioTracks() }
+        // v6.3: info button — channel/quality/provider/stream dialog.
+        binding.btnInfo.setOnClickListener { showInfoDialog() }
         // v5.3: PiP + drawers.
         binding.btnPip.setOnClickListener { enterPip() }
         // v5.4: record button (FlowPlay function).
@@ -216,7 +218,7 @@ class PlayerActivity : AppCompatActivity() {
         // works without opening the drawer first.
         lifecycleScope.launch {
             try {
-                val api = StalkerSession.get(this@PlayerActivity)
+                val api = SourceManager.get(this@PlayerActivity)
                 drawerChannels = api.getChannelsPaginated(genreId = drawerGenreId)
             } catch (e: Exception) {
                 // drawer will load on open; ignore
@@ -405,7 +407,7 @@ class PlayerActivity : AppCompatActivity() {
         drawerLoadJob?.cancel()
         drawerLoadJob = lifecycleScope.launch {
             try {
-                val api = StalkerSession.get(this@PlayerActivity)
+                val api = SourceManager.get(this@PlayerActivity)
                 drawerGenres = api.getGenres()
             } catch (e: Exception) {
                 drawerGenres = emptyList()
@@ -433,7 +435,7 @@ class PlayerActivity : AppCompatActivity() {
         binding.drawerProgress.isVisible = true
         drawerLoadJob = lifecycleScope.launch {
             try {
-                val api = StalkerSession.get(this@PlayerActivity)
+                val api = SourceManager.get(this@PlayerActivity)
                 // v5.3: full pagination — every channel in the genre.
                 drawerChannels = api.getChannelsPaginated(genreId = genreId)
                 val items = drawerChannels.map {
@@ -584,6 +586,33 @@ class PlayerActivity : AppCompatActivity() {
         }.trimEnd()
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle(getString(R.string.stats_title))
+            .setMessage(msg)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+        bumpHideTimer()
+    }
+
+    /** v6.3: "info" dialog — channel, quality badge, provider, stream URL. */
+    private fun showInfoDialog() {
+        val quality = QualityBadge.fromName(channelName).ifBlank { "—" }
+        val active = ProviderStore.getActive(this)
+        val providerText = if (active != null)
+            "${ProviderStore.displayName(active)} • ${ProviderStore.typeLabel(active)}"
+        else "—"
+        val url = currentStreamUrl
+        val streamText = when {
+            url.isBlank() -> "—"
+            url.length > 120 -> url.take(120) + "…"
+            else -> url
+        }
+        val msg = buildString {
+            appendLine("${getString(R.string.info_label_channel)}: ${channelName.ifBlank { getString(R.string.unknown_channel) }}")
+            appendLine("${getString(R.string.info_label_quality)}: $quality")
+            appendLine("${getString(R.string.info_label_provider)}: $providerText")
+            appendLine("${getString(R.string.info_label_stream)}: $streamText")
+        }.trimEnd()
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(getString(R.string.info_dialog_title))
             .setMessage(msg)
             .setPositiveButton(android.R.string.ok, null)
             .show()
@@ -745,7 +774,7 @@ class PlayerActivity : AppCompatActivity() {
         }
         lifecycleScope.launch {
             try {
-                val api = StalkerSession.get(this@PlayerActivity)
+                val api = SourceManager.get(this@PlayerActivity)
                 val headers = api.streamHeaders()
                 val rec = StreamRecorder()
                 rec.setExtraHeaders(headers)
@@ -1026,7 +1055,7 @@ class PlayerActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                val api = StalkerSession.get(this@PlayerActivity)
+                val api = SourceManager.get(this@PlayerActivity)
                 val streamUrl = api.createLink(cmd, type)
                 initPlayer(streamUrl)
             } catch (e: Exception) {
