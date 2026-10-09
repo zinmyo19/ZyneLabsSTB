@@ -61,6 +61,17 @@ object ListCache {
         memory.clear()
     }
 
+    /**
+     * v6.3: wipe the disk tier too. Fixes "channels remain (and play)
+     * after the provider was deleted" — the disk cache survived
+     * invalidateAll() and was re-served on next launch.
+     */
+    @Synchronized
+    fun clearDisk(ctx: Context) {
+        memory.clear()
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+    }
+
     private fun readDisk(ctx: Context, key: String): Entry? {
         val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val json = p.getString(key, null) ?: return null
