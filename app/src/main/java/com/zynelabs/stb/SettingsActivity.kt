@@ -1,6 +1,5 @@
 package com.zynelabs.stb
 
-import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -33,16 +32,14 @@ class SettingsActivity : AppCompatActivity() {
         private const val ID_HDR_PORTAL = "header_portal"
         private const val ID_PORTAL = "portal"
         private const val ID_RESET = "reset"
+        private const val ID_PROVIDER_SETTINGS = "provider_settings"
+        private const val ID_PROVIDER_ADD = "provider_add"
         // v5.7: provider management lives here so the TV remote (D-pad) can
         // reach it — the home header chip is not D-pad-focusable on TV.
-        private const val ID_HDR_PROVIDERS = "header_providers"
-        private const val ID_PROVIDER_ADD = "provider_add"
-        private const val ID_PROVIDER_DELETE = "provider_delete"
         // v5.8: Reconnect — drops the stale cached session and forces a
         // fresh handshake now (empty-list bug: cached token dead
         // server-side, portal answers 200+empty, no auth error).
         private const val ID_RECONNECT = "provider_reconnect"
-        private const val PROVIDER_ROW_PREFIX = "provider:"
         private const val ID_HDR_DEVELOPER = "header_developer"
         private const val ID_PROBE = "probe"
         private const val ID_DEBUG = "debug"
@@ -137,27 +134,19 @@ class SettingsActivity : AppCompatActivity() {
                 ID_RESET,
                 getString(R.string.reset_connection_row),
                 ""
-            )
+            ),
+            // v6.2: provider management lives in Portal Settings now
+            // (AddProviderActivity) — D-pad reachable from here.
+            RowItem(
+                ID_PROVIDER_SETTINGS,
+                getString(R.string.provider_settings_row),
+                ProviderStore.displayName(ProviderStore.getActive(this) ?: Provider("", "", "", ""))
+            ),
+            RowItem(ID_PROVIDER_ADD, getString(R.string.provider_add_row), ""),
+            // v5.8: Reconnect — one tap drops the stale cached session
+            // and handshakes fresh (moved to Portal section in v6.2).
+            RowItem(ID_RECONNECT, getString(R.string.provider_reconnect_row), "")
         )
-        // v5.7: provider management — switch / add / delete, all D-pad
-        // reachable (the home header chip is not reachable by TV remote).
-        rows.add(RowItem(ID_HDR_PROVIDERS, getString(R.string.section_providers), header = true))
-        val activeId = ProviderStore.getActiveId(this)
-        for (p in ProviderStore.list(this)) {
-            rows.add(
-                RowItem(
-                    PROVIDER_ROW_PREFIX + p.id,
-                    (if (p.id == activeId) "● " else "○ ") +
-                        ProviderStore.displayName(p),
-                    p.mac
-                )
-            )
-        }
-        rows.add(RowItem(ID_PROVIDER_ADD, getString(R.string.provider_add_row), ""))
-        rows.add(RowItem(ID_PROVIDER_DELETE, getString(R.string.provider_delete_row), ""))
-        // v5.8: Reconnect sits with the providers (D-pad reachable) —
-        // one tap drops the stale cached session and handshakes fresh.
-        rows.add(RowItem(ID_RECONNECT, getString(R.string.provider_reconnect_row), ""))
         rows.add(RowItem(ID_HDR_DEVELOPER, getString(R.string.section_developer), header = true))
         rows.add(RowItem(ID_PROBE, getString(R.string.probe_row), ""))
         rows.add(RowItem(ID_DEBUG, getString(R.string.debug_row), ""))
@@ -193,13 +182,21 @@ class SettingsActivity : AppCompatActivity() {
                 )
                 return
             }
-            // v5.7: provider management (D-pad reachable).
-            ID_PROVIDER_ADD -> {
-                startActivity(Intent(this, AddProviderActivity::class.java))
+            // v6.2: provider management (add/edit/delete) lives in
+            // AddProviderActivity, opened from the Portal section.
+            // Edit mode for the active provider; the form's Save/Delete
+            // handle update/delete, and a long-press-free "add" is one
+            // tap away via the Add button in AddProviderActivity.
+            ID_PROVIDER_SETTINGS -> {
+                val activeId = ProviderStore.getActiveId(this)
+                startActivity(
+                    Intent(this, AddProviderActivity::class.java)
+                        .putExtra(AddProviderActivity.EXTRA_PROVIDER_ID, activeId)
+                )
                 return
             }
-            ID_PROVIDER_DELETE -> {
-                showDeleteProviderDialog()
+            ID_PROVIDER_ADD -> {
+                startActivity(Intent(this, AddProviderActivity::class.java))
                 return
             }
             // v5.8: Reconnect — D-pad reachable, runs the handshake now.
@@ -229,29 +226,9 @@ class SettingsActivity : AppCompatActivity() {
                 return
             }
             else -> {
-                // v5.7: tapping a saved provider row switches to it.
-                if (id.startsWith(PROVIDER_ROW_PREFIX)) {
-                    switchProvider(id.removePrefix(PROVIDER_ROW_PREFIX))
-                    return
-                }
                 return
             }
         }
-        refresh()
-    }
-
-    /** v5.7: switch the active provider (same semantics as the home chip). */
-    private fun switchProvider(id: String) {
-        val p = ProviderStore.get(this, id) ?: return
-        if (ProviderStore.getActiveId(this) == p.id) return
-        ProviderStore.setActive(this, p.id)
-        ProviderStore.applyActive(this)
-        ListCache.invalidateAll()
-        Toast.makeText(
-            this,
-            getString(R.string.provider_switched, ProviderStore.displayName(p)),
-            Toast.LENGTH_SHORT
-        ).show()
         refresh()
     }
 
@@ -288,25 +265,4 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    /** v5.7: delete-provider picker (mirrors HomeActivity's dialog). */    private fun showDeleteProviderDialog() {
-        val providers = ProviderStore.list(this)
-        if (providers.isEmpty()) return
-        val items = providers.map { ProviderStore.displayName(it) }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle(R.string.provider_delete_title)
-            .setItems(items) { _, which ->
-                val doomed = providers[which]
-                ProviderStore.delete(this, doomed.id)
-                if (ProviderStore.getActiveId(this) == doomed.id) {
-                    ProviderStore.list(this).firstOrNull()?.let {
-                        ProviderStore.setActive(this, it.id)
-                    }
-                }
-                ProviderStore.applyActive(this)
-                ListCache.invalidateAll()
-                refresh()
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
 }
