@@ -18,7 +18,9 @@ data class RowItem(
     val value: String = "",
     val posterUrl: String = "",
     /** v5.0: section header — non-clickable, styled distinctly. */
-    val header: Boolean = false
+    val header: Boolean = false,
+    /** v6.3.3: highlight (e.g. current channel in the player drawer) — red title. */
+    val highlight: Boolean = false
 )
 
 class RowAdapter(
@@ -61,9 +63,14 @@ class RowAdapter(
             } else {
                 binding.root.isFocusable = true
                 binding.root.isClickable = true
-                binding.tvTitle.setTextColor(0xFFFFFFFF.toInt())
+                // v6.3.3: highlighted rows (current channel) get a red title.
+                binding.tvTitle.setTextColor(
+                    if (item.highlight) 0xFFE53935.toInt() else 0xFFFFFFFF.toInt()
+                )
                 binding.tvTitle.textSize = 18f
-                binding.tvTitle.typeface = android.graphics.Typeface.DEFAULT
+                binding.tvTitle.typeface =
+                    if (item.highlight) android.graphics.Typeface.DEFAULT_BOLD
+                    else android.graphics.Typeface.DEFAULT
             }
             // v4.9: poster thumbnail (VOD items); hidden when absent.
             if (item.posterUrl.isNotBlank()) {
