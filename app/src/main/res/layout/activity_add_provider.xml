@@ -38,6 +38,16 @@
             android:entries="@array/provider_type_labels"
             android:padding="12dp" />
 
+        <!-- v6.3.2: QR pairing (this device SHOWS a code; the phone scans
+             it and submits the playlist) — an add-provider action, moved
+             here from Settings → Providers. Always visible. -->
+        <Button
+            android:id="@+id/btnPairQr"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/pair_qr_show_title" />
+
         <!-- Stalker section -->
         <LinearLayout
             android:id="@+id/sectionStalker"
@@ -90,7 +100,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
-                android:text="Scan QR Code" />
+                android:text="@string/scan_qr_camera_title" />
         </LinearLayout>
 
         <!-- M3U link section -->
