@@ -9,8 +9,10 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.zynelabs.stb.databinding.ActivityCategoriesBinding
+import com.zynelabs.stb.databinding.ItemChannelBinding
 import com.zynelabs.stb.databinding.ItemChannelCardBinding
 import kotlinx.coroutines.launch
 
@@ -23,31 +25,74 @@ class CategoriesActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityCategoriesBinding
     private val adapter = GenreAdapter { genre -> openGenre(genre) }
+    private var isTv = false
+    private var catView: String = Prefs.CAT_VIEW_GRID
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityCategoriesBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        val isTv = (resources.configuration.uiMode and
+        isTv = (resources.configuration.uiMode and
             Configuration.UI_MODE_TYPE_MASK) ==
             Configuration.UI_MODE_TYPE_TELEVISION
-        val span = if (isTv) 5 else 3
-        binding.recyclerView.layoutManager = GridLayoutManager(this, span)
+        catView = Prefs.getCatView(this)
+        applyCatView()
+        updateToggleLabel()
         binding.recyclerView.adapter = adapter
         binding.btnRetry.setOnClickListener { loadGenres() }
         binding.btnBack.setOnClickListener { finish() }
+        // v6.3: grid/list view toggle.
+        binding.btnViewToggle.setOnClickListener { toggleCatView() }
 
         loadGenres()
+    }
+
+    /** Applies the saved view mode: grid (span 3 phone / 5 TV) or list. */
+    private fun applyCatView() {
+        binding.recyclerView.layoutManager =
+            if (catView == Prefs.CAT_VIEW_LIST) {
+                LinearLayoutManager(this)
+            } else {
+                GridLayoutManager(this, if (isTv) 5 else 3)
+            }
+        adapter.viewMode = catView
+        adapter.notifyDataSetChanged()
+    }
+
+    private fun toggleCatView() {
+        catView = if (catView == Prefs.CAT_VIEW_LIST) {
+            Prefs.CAT_VIEW_GRID
+        } else {
+            Prefs.CAT_VIEW_LIST
+        }
+        Prefs.setCatView(this, catView)
+        updateToggleLabel()
+        applyCatView()
+        binding.recyclerView.requestFocus()
+    }
+
+    private fun updateToggleLabel() {
+        binding.btnViewToggle.text = getString(
+            if (catView == Prefs.CAT_VIEW_LIST) R.string.cat_view_list
+            else R.string.cat_view_grid
+        )
     }
 
     private fun loadGenres() {
         binding.progressBar.isVisible = true
         binding.tvError.isVisible = false
         binding.btnRetry.isVisible = false
+        // v6.3: don't show another provider's (or no provider's) categories.
+        if (!SourceManager.hasProvider(this)) {
+            binding.progressBar.isVisible = false
+            binding.tvError.text = getString(R.string.add_provider_hint)
+            binding.tvError.isVisible = true
+            return
+        }
         lifecycleScope.launch {
             try {
-                val api = StalkerSession.get(this@CategoriesActivity)
+                val api = SourceManager.get(this@CategoriesActivity)
                 val genres = api.getGenres()
                 if (genres.isEmpty()) {
                     binding.tvError.text = getString(R.string.error_no_categories)
@@ -108,29 +153,48 @@ class CategoriesActivity : AppCompatActivity() {
 
     private class GenreAdapter(
         private val onClick: (StalkerApi.Genre) -> Unit
-    ) : RecyclerView.Adapter<GenreAdapter.VH>() {
+    ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+
+        companion object {
+            private const val TYPE_GRID = 0
+            private const val TYPE_LIST = 1
+        }
 
         private var items: List<StalkerApi.Genre> = emptyList()
+
+        /** Set by the activity; "grid" or "list" (Prefs.CAT_VIEW_*). */
+        var viewMode: String = Prefs.CAT_VIEW_GRID
 
         fun submitList(list: List<StalkerApi.Genre>) {
             items = list
             notifyDataSetChanged()
         }
 
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
-            val b = ItemChannelCardBinding.inflate(
-                LayoutInflater.from(parent.context), parent, false
-            )
-            return VH(b)
+        override fun getItemViewType(position: Int): Int =
+            if (viewMode == Prefs.CAT_VIEW_LIST) TYPE_LIST else TYPE_GRID
+
+        override fun onCreateViewHolder(
+            parent: ViewGroup, viewType: Int
+        ): RecyclerView.ViewHolder {
+            val inflater = LayoutInflater.from(parent.context)
+            return if (viewType == TYPE_LIST) {
+                ListVH(ItemChannelBinding.inflate(inflater, parent, false))
+            } else {
+                GridVH(ItemChannelCardBinding.inflate(inflater, parent, false))
+            }
         }
 
-        override fun onBindViewHolder(holder: VH, position: Int) {
-            holder.bind(items[position])
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+            val genre = items[position]
+            when (holder) {
+                is GridVH -> holder.bind(genre)
+                is ListVH -> holder.bind(genre)
+            }
         }
 
         override fun getItemCount(): Int = items.size
 
-        private inner class VH(
+        private inner class GridVH(
             private val b: ItemChannelCardBinding
         ) : RecyclerView.ViewHolder(b.root) {
             fun bind(genre: StalkerApi.Genre) {
@@ -145,8 +209,23 @@ class CategoriesActivity : AppCompatActivity() {
                 }
                 b.ivPoster.isVisible = false
                 b.tvLogoLetter.isVisible = true
+                // v6.3: genres aren't channels — badge stays gone.
+                b.tvQuality.isVisible = false
                 b.root.setOnClickListener { onClick(genre) }
                 b.root.isFocusable = true
+            }
+        }
+
+        /** v6.3: list-mode row — reuses the channel row layout (D-pad focusable). */
+        private inner class ListVH(
+            private val b: ItemChannelBinding
+        ) : RecyclerView.ViewHolder(b.root) {
+            fun bind(genre: StalkerApi.Genre) {
+                b.tvNumber.isVisible = false
+                b.tvName.text = genre.title
+                // genres aren't channels — badge stays gone.
+                b.tvQuality.isVisible = false
+                b.root.setOnClickListener { onClick(genre) }
             }
         }
     }
