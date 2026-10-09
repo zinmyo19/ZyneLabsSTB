@@ -194,6 +194,20 @@ object Prefs {
         return SLEEP_MINUTES[idx]
     }
 
+    // ------------------------------------------------------- v6.3 categories view
+
+    private const val KEY_CAT_VIEW = "cat_view"
+    const val CAT_VIEW_GRID = "grid"
+    const val CAT_VIEW_LIST = "list"
+
+    /** Categories view mode: "grid" (default) or "list". */
+    fun getCatView(context: Context): String =
+        prefs(context).getString(KEY_CAT_VIEW, CAT_VIEW_GRID) ?: CAT_VIEW_GRID
+
+    fun setCatView(context: Context, value: String) {
+        prefs(context).edit().putString(KEY_CAT_VIEW, value).apply()
+    }
+
     // ------------------------------------------------------------ v5.4 favorites
 
     private const val KEY_FAVORITES = "favorites"
