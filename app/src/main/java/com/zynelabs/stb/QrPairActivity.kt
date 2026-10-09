@@ -46,8 +46,8 @@ class QrPairActivity : AppCompatActivity() {
     private lateinit var btnBack: Button
 
     private val http = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
     private var pollJob: Job? = null
@@ -73,13 +73,21 @@ class QrPairActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    /** Step 1: POST /api/new to get a pairing code. */
+    /** Step 1: POST /api/new to get a pairing code (one retry on failure). */
     private fun requestCode() {
         lifecycleScope.launch {
-            val code = try {
+            var code = try {
                 withContext(Dispatchers.IO) { postNewCode() }
             } catch (_: Exception) {
                 null
+            }
+            // v6.3.1: one retry — slow mobile networks often fail the first attempt.
+            if (code.isNullOrBlank()) {
+                code = try {
+                    withContext(Dispatchers.IO) { postNewCode() }
+                } catch (_: Exception) {
+                    null
+                }
             }
             if (isFinishing || isDestroyed) return@launch
             if (code.isNullOrBlank()) {
