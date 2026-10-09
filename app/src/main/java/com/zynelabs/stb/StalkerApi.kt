@@ -1574,6 +1574,17 @@ class StalkerApi(
         StalkerSession.reset()
     }
 
+    /**
+     * v6.2.1: testing escape hatch (Settings → Developer → Reset connection
+     * attempts). Clears ONLY the handshake timestamps (resets the 1-hour
+     * cap) — the cached session is kept. For Dominic's active testing
+     * workflow when he hits "Too many connection attempts".
+     */
+    fun resetHandshakeCap() {
+        sessionStore.clearAllTimestamps()
+        android.util.Log.i("StalkerApi", "resetHandshakeCap: cap reset")
+    }
+
     /** Returns all TV channels, sorted by channel number. */
     suspend fun getAllChannels(): List<Channel> = withSession {
         val data = jsArray(get("itv", "get_all_channels")) ?: return@withSession emptyList()
