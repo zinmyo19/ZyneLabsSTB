@@ -1146,10 +1146,11 @@ class PlayerActivity : AppCompatActivity() {
         p.seekTo(target)
     }
 
-    /** v5.5: volume/mute button icon follows mute state (FlowPlay SpeakerIcon). */
+    /** v5.5: volume/mute button icon follows mute state (FlowPlay SpeakerIcon).
+        v6.3.6: unmuted icon = Dominic's custom volume icon. */
     private fun updateVolumeIcon() {
         binding.btnVolume.setImageResource(
-            if (muted) R.drawable.ic_volume_mute else R.drawable.ic_volume
+            if (muted) R.drawable.ic_volume_mute else R.drawable.ic_volume_custom
         )
     }
 
