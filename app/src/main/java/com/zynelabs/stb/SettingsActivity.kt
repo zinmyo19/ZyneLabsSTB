@@ -43,6 +43,7 @@ class SettingsActivity : AppCompatActivity() {
         private const val ID_HDR_DEVELOPER = "header_developer"
         private const val ID_PROBE = "probe"
         private const val ID_DEBUG = "debug"
+        private const val ID_RESET_CAP = "reset_cap"
         private const val ID_VERSION = "version"
         // v5.0 player settings
         private const val ID_HDR_PLAYER = "header_player"
@@ -150,6 +151,7 @@ class SettingsActivity : AppCompatActivity() {
         rows.add(RowItem(ID_HDR_DEVELOPER, getString(R.string.section_developer), header = true))
         rows.add(RowItem(ID_PROBE, getString(R.string.probe_row), ""))
         rows.add(RowItem(ID_DEBUG, getString(R.string.debug_row), ""))
+        rows.add(RowItem(ID_RESET_CAP, getString(R.string.reset_cap_row), ""))
         rows.add(
             RowItem(
                 ID_VERSION,
@@ -214,6 +216,13 @@ class SettingsActivity : AppCompatActivity() {
                 val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 cm.setPrimaryClip(ClipData.newPlainText("ZyneLabs STB debug", info))
                 Toast.makeText(this, "Debug info copied", Toast.LENGTH_SHORT).show()
+                return
+            }
+            ID_RESET_CAP -> {
+                // v6.2.1: testing escape hatch — clears ONLY the handshake
+                // timestamps (resets the 1-hour cap), keeps the session.
+                StalkerSession.get(this).resetHandshakeCap()
+                Toast.makeText(this, "Connection attempts reset", Toast.LENGTH_SHORT).show()
                 return
             }
             ID_RESET -> {
