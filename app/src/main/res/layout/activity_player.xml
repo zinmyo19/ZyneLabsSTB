@@ -508,7 +508,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|center_horizontal"
         android:layout_marginBottom="16dp"
-        android:background="#B3000000"
+        android:background="#FF0A0F14"
         android:orientation="vertical"
         android:paddingStart="12dp"
         android:paddingTop="6dp"
@@ -721,7 +721,7 @@
         android:layout_width="320dp"
         android:layout_height="match_parent"
         android:layout_gravity="end"
-        android:background="@color/background"
+        android:background="#FF0A0F14"
         android:orientation="vertical"
         android:translationX="340dp"
         android:visibility="gone">
