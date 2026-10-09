@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- v6.3.2 strings — English-only UI. -->
+
+    <!-- Item 4: QR pairing entry moved to Add Provider screen. -->
+    <string name="pair_qr_show_title">Show QR code (pair with phone)</string>
+    <string name="scan_qr_camera_title">Scan QR with camera</string>
+
+    <!-- Item 2: player gear menu. -->
+    <string name="player_menu_title">Player options</string>
+    <string name="player_menu_tracks">Tracks</string>
+    <string name="player_menu_info">Info</string>
+    <string name="player_menu_pip">Picture in picture</string>
+    <string name="player_menu_record">Record</string>
+    <string name="player_menu_settings">Player settings</string>
+    <string name="player_menu_channels">Channels</string>
+    <string name="player_menu_lock">Lock screen</string>
+
+    <!-- Item 1: cached provider detail in switcher rows. -->
+    <string name="provider_row_detail">%1$s · Exp: %2$s · %3$d channels</string>
+    <string name="provider_row_detail_noexp">%1$s · %2$d channels</string>
+</resources>
