@@ -1616,7 +1616,17 @@ class StalkerApi(
         // strictly sequential (batchSize=1); unfiltered keeps 6-way.
         val batchSize = if (genreId != null) 1 else 6
         while (!done && page <= maxPages) {
-            val batchEnd = minOf(page + batchSize, maxPages + 1)
+            // v6.1: avoid Int overflow when maxPages = Int.MAX_VALUE
+            // (the default). maxPages + 1 overflows to Int.MIN_VALUE,
+            // minOf() then picks it, and (page until MIN_VALUE) is empty —
+            // the loop exited immediately with zero results. That is why
+            // Home rows (maxPages=1/2) worked but All/Categories (default)
+            // always showed "No channels found".
+            val batchEnd = if (maxPages == Int.MAX_VALUE) {
+                page + batchSize
+            } else {
+                minOf(page + batchSize, maxPages + 1)
+            }
             val batch = (page until batchEnd).toList()
             if (batch.isEmpty()) break
             val results = batch.map { p ->
