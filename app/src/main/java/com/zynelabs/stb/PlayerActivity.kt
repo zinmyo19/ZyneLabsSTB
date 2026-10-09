@@ -117,9 +117,12 @@ class PlayerActivity : AppCompatActivity() {
             window.attributes.layoutInDisplayCutoutMode =
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
-        applyImmersive()
         binding = ActivityPlayerBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        // v6.3.4: defer immersive until the DecorView is attached —
+        // calling window.insetsController in onCreate before this threw NPE
+        // on some devices (v6.3.3 launch crash).
+        window.decorView.post { applyImmersive() }
 
         val cmd = intent.getStringExtra(EXTRA_CMD).orEmpty()
         channelName = intent.getStringExtra(EXTRA_NAME).orEmpty()
@@ -695,13 +698,19 @@ class PlayerActivity : AppCompatActivity() {
     /**
      * v6.3.3: true edge-to-edge — hide system bars, immersive sticky,
      * re-applied on focus (system gestures can clear it).
+     * v6.3.4: null-safe — window.insetsController's getter itself throws
+     * NPE when the DecorView isn't attached yet (v6.3.3 launch crash), so
+     * guard with peekDecorView() + runCatching; callers defer/re-apply.
      */
     private fun applyImmersive() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.insetsController?.let {
-                it.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
-                it.systemBarsBehavior =
-                    WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            if (window.peekDecorView() == null) return
+            runCatching {
+                window.insetsController?.let {
+                    it.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                    it.systemBarsBehavior =
+                        WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                }
             }
         } else {
             @Suppress("DEPRECATION")
