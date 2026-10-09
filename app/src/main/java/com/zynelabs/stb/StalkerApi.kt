@@ -1734,8 +1734,8 @@ class StalkerApi(
         // v5.9: log what the portal returned for this genre.
         android.util.Log.i(
             "StalkerApi",
-            "fetchChannelPage p=$page genreId=$genreId " +
-                "returned ${data?.length() ?: "null"} items"
+            "fetchChannelPage p=" + page + " genreId=" + genreId + " " +
+                "returned " + (data?.length()?.toString() ?: "null") + " items"
         )
         if (data == null || data.length() == 0) {
             return@withSession ChannelPage(emptyList(), emptyList())
