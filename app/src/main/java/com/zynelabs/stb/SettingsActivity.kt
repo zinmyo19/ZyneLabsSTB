@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.zynelabs.stb.databinding.ActivityListBinding
 
@@ -36,6 +37,10 @@ class SettingsActivity : AppCompatActivity() {
         private const val ID_HDR_PROVIDERS = "header_providers"
         private const val ID_PROVIDER_ADD = "provider_add"
         private const val ID_PROVIDER_DELETE = "provider_delete"
+        // v5.8: Reconnect — drops the stale cached session and forces a
+        // fresh handshake now (empty-list bug: cached token dead
+        // server-side, portal answers 200+empty, no auth error).
+        private const val ID_RECONNECT = "provider_reconnect"
         private const val PROVIDER_ROW_PREFIX = "provider:"
         private const val ID_HDR_DEVELOPER = "header_developer"
         private const val ID_PROBE = "probe"
@@ -149,6 +154,9 @@ class SettingsActivity : AppCompatActivity() {
         }
         rows.add(RowItem(ID_PROVIDER_ADD, getString(R.string.provider_add_row), ""))
         rows.add(RowItem(ID_PROVIDER_DELETE, getString(R.string.provider_delete_row), ""))
+        // v5.8: Reconnect sits with the providers (D-pad reachable) —
+        // one tap drops the stale cached session and handshakes fresh.
+        rows.add(RowItem(ID_RECONNECT, getString(R.string.provider_reconnect_row), ""))
         rows.add(RowItem(ID_HDR_DEVELOPER, getString(R.string.section_developer), header = true))
         rows.add(RowItem(ID_PROBE, getString(R.string.probe_row), ""))
         rows.add(RowItem(ID_DEBUG, getString(R.string.debug_row), ""))
@@ -191,6 +199,11 @@ class SettingsActivity : AppCompatActivity() {
             }
             ID_PROVIDER_DELETE -> {
                 showDeleteProviderDialog()
+                return
+            }
+            // v5.8: Reconnect — D-pad reachable, runs the handshake now.
+            ID_RECONNECT -> {
+                reconnect()
                 return
             }
             ID_PROBE -> {
@@ -241,8 +254,40 @@ class SettingsActivity : AppCompatActivity() {
         refresh()
     }
 
-    /** v5.7: delete-provider picker (mirrors HomeActivity's dialog). */
-    private fun showDeleteProviderDialog() {
+    /**
+     * v5.8: Reconnect — drops the cached session (memory + prefs) and
+     * forces a fresh handshake RIGHT NOW via getProfile(), then clears
+     * the channel cache so lists reload on the new session. The manual
+     * escape hatch for the empty-list bug (stale cached token, portal
+     * answers 200 + empty data, no auth error to trigger self-healing).
+     * Cap-checked inside the handshake — a "Too many connection
+     * attempts" error surfaces as a toast, not a crash.
+     */
+    private fun reconnect() {
+        lifecycleScope.launch {
+            try {
+                StalkerSession.get(this@SettingsActivity).resetConnection()
+                // resetConnection() drops the shared instance — this get()
+                // builds a fresh StalkerApi, and getProfile() handshakes.
+                StalkerSession.get(this@SettingsActivity).getProfile()
+                ListCache.invalidateAll()
+                Toast.makeText(
+                    this@SettingsActivity,
+                    getString(R.string.provider_reconnected),
+                    Toast.LENGTH_SHORT
+                ).show()
+            } catch (e: Exception) {
+                Toast.makeText(
+                    this@SettingsActivity,
+                    (e.message ?: "Reconnect failed").take(100),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            refresh()
+        }
+    }
+
+    /** v5.7: delete-provider picker (mirrors HomeActivity's dialog). */    private fun showDeleteProviderDialog() {
         val providers = ProviderStore.list(this)
         if (providers.isEmpty()) return
         val items = providers.map { ProviderStore.displayName(it) }.toTypedArray()
