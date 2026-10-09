@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- v5.6: Add Provider — portal URL + MAC, optional QR scan. Imperial theme. -->
+<!-- v6.3: Add/Edit Provider — type selector + one dynamic section per type. Imperial theme. -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -16,7 +16,7 @@
             android:id="@+id/tvTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Add Provider"
+            android:text="@string/provider_add_title"
             android:textColor="@color/gold"
             android:textSize="22sp"
             android:textStyle="bold" />
@@ -25,47 +25,203 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Portal URL"
+            android:text="@string/provider_type_label"
             android:textColor="@color/text_secondary"
             android:textSize="14sp" />
 
-        <EditText
-            android:id="@+id/etUrl"
+        <Spinner
+            android:id="@+id/spinnerType"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
             android:background="@drawable/provider_chip"
-            android:hint="http://example.com:80/c"
-            android:inputType="textUri"
-            android:padding="12dp"
-            android:textColor="@color/text_primary"
-            android:textColorHint="#66FFFFFF" />
+            android:entries="@array/provider_type_labels"
+            android:padding="12dp" />
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="Box MAC"
-            android:textColor="@color/text_secondary"
-            android:textSize="14sp" />
-
-        <EditText
-            android:id="@+id/etMac"
+        <!-- Stalker section -->
+        <LinearLayout
+            android:id="@+id/sectionStalker"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:background="@drawable/provider_chip"
-            android:hint="00:1A:79:00:00:00"
-            android:inputType="text"
-            android:padding="12dp"
-            android:textColor="@color/text_primary"
-            android:textColorHint="#66FFFFFF" />
+            android:orientation="vertical">
 
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Portal URL"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp" />
+
+            <EditText
+                android:id="@+id/etUrl"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:background="@drawable/provider_chip"
+                android:hint="http://example.com:80/c"
+                android:inputType="textUri"
+                android:padding="12dp"
+                android:textColor="@color/text_primary"
+                android:textColorHint="#66FFFFFF" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Box MAC"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp" />
+
+            <EditText
+                android:id="@+id/etMac"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:background="@drawable/provider_chip"
+                android:hint="00:1A:79:00:00:00"
+                android:inputType="text"
+                android:padding="12dp"
+                android:textColor="@color/text_primary"
+                android:textColorHint="#66FFFFFF" />
+
+            <Button
+                android:id="@+id/btnScanQr"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="Scan QR Code" />
+        </LinearLayout>
+
+        <!-- M3U link section -->
+        <LinearLayout
+            android:id="@+id/sectionM3uUrl"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/provider_lbl_playlist_url"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp" />
+
+            <EditText
+                android:id="@+id/etM3uUrl"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:background="@drawable/provider_chip"
+                android:hint="http://example.com/list.m3u"
+                android:inputType="textUri"
+                android:padding="12dp"
+                android:textColor="@color/text_primary"
+                android:textColorHint="#66FFFFFF" />
+        </LinearLayout>
+
+        <!-- M3U file section -->
+        <LinearLayout
+            android:id="@+id/sectionM3uFile"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <Button
+                android:id="@+id/btnChooseFile"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="@string/provider_btn_choose_file" />
+
+            <TextView
+                android:id="@+id/tvFileName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/provider_no_file_chosen"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <!-- Xtream section -->
+        <LinearLayout
+            android:id="@+id/sectionXtream"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/provider_lbl_server_url"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp" />
+
+            <EditText
+                android:id="@+id/etServer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:background="@drawable/provider_chip"
+                android:hint="http://example.com:8080"
+                android:inputType="textUri"
+                android:padding="12dp"
+                android:textColor="@color/text_primary"
+                android:textColorHint="#66FFFFFF" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/provider_lbl_username"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp" />
+
+            <EditText
+                android:id="@+id/etUsername"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:background="@drawable/provider_chip"
+                android:hint="username"
+                android:inputType="text"
+                android:padding="12dp"
+                android:textColor="@color/text_primary"
+                android:textColorHint="#66FFFFFF" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/provider_lbl_password"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp" />
+
+            <EditText
+                android:id="@+id/etPassword"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:background="@drawable/provider_chip"
+                android:hint="password"
+                android:inputType="textPassword"
+                android:padding="12dp"
+                android:textColor="@color/text_primary"
+                android:textColorHint="#66FFFFFF" />
+        </LinearLayout>
+
+        <!-- Shared name field -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Name (optional)"
+            android:text="@string/provider_lbl_name"
             android:textColor="@color/text_secondary"
             android:textSize="14sp" />
 
@@ -75,24 +231,17 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
             android:background="@drawable/provider_chip"
-            android:hint="My Portal"
+            android:hint="My Provider"
             android:inputType="text"
             android:padding="12dp"
             android:textColor="@color/text_primary"
             android:textColorHint="#66FFFFFF" />
 
         <Button
-            android:id="@+id/btnScanQr"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="Scan QR Code" />
-
-        <Button
             android:id="@+id/btnSave"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="20dp"
             android:text="Save Provider" />
 
         <Button
