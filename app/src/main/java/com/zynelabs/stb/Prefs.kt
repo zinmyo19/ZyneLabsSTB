@@ -230,4 +230,16 @@ object Prefs {
         prefs(context).edit().putStringSet(KEY_FAVORITES, set).apply()
         return nowFav
     }
+
+    // ------------------------------------------------------------ v6.3.1 settings tab
+
+    private const val KEY_SETTINGS_TAB = "settings_tab"
+
+    /** Which Settings tab was last open (0=Providers … 3=Developer). */
+    fun getSettingsTab(context: Context): Int =
+        prefs(context).getInt(KEY_SETTINGS_TAB, 0)
+
+    fun setSettingsTab(context: Context, tab: Int) {
+        prefs(context).edit().putInt(KEY_SETTINGS_TAB, tab).apply()
+    }
 }
