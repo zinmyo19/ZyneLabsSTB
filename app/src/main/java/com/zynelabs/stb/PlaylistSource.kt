@@ -502,11 +502,51 @@ object SourceManager {
                 ProviderStore.TYPE_XTREAM -> XtreamSource(p)
                 ProviderStore.TYPE_M3U_URL, ProviderStore.TYPE_M3U_FILE ->
                     M3uSource(ctx.applicationContext, p)
-                else -> StalkerSource(StalkerSession.get(ctx))
+                else -> {
+                    // v6.3.14: defensive — a null/unknown-type provider that
+                    // looks like M3U (filePath set, or URL ending .m3u/.m3u8)
+                    // must NOT silently fall through to StalkerSource (its
+                    // getGenres() returns empty → "No categories found").
+                    // Prefer M3U when the provider smells like M3U.
+                    if (p != null && looksLikeM3u(p)) {
+                        Log.w(
+                            "SourceManager",
+                            "unknown provider type '${p.type}' id=${p.id} " +
+                                "name='${p.name}' url='${p.url}' " +
+                                "filePath='${p.filePath}' — treating as M3U"
+                        )
+                        M3uSource(ctx.applicationContext, p)
+                    } else {
+                        if (p == null) {
+                            Log.w(
+                                "SourceManager",
+                                "no active provider — falling back to StalkerSource"
+                            )
+                        } else {
+                            Log.w(
+                                "SourceManager",
+                                "unknown provider type '${p.type}' id=${p.id} " +
+                                    "name='${p.name}' — falling back to StalkerSource"
+                            )
+                        }
+                        StalkerSource(StalkerSession.get(ctx))
+                    }
+                }
             }
             cachedKey = key
         }
         return cached!!
+    }
+
+    /**
+     * v6.3.14: heuristic for a provider that smells like M3U even when its
+     * stored type is null/unknown (e.g. corrupted provider DB entry).
+     */
+    private fun looksLikeM3u(p: Provider): Boolean {
+        if (p.filePath.isNotBlank()) return true
+        val u = p.url.trim().lowercase()
+        return u.endsWith(".m3u") || u.endsWith(".m3u8") ||
+            u.contains(".m3u?") || u.contains(".m3u8?")
     }
 
     fun reset() {
