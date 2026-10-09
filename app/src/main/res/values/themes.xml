@@ -8,6 +8,12 @@
         <item name="android:statusBarColor">@color/background</item>
         <item name="android:navigationBarColor">@color/background</item>
         <item name="android:textColorPrimary">@color/text_primary</item>
+        <!-- v6.3.13: belt-and-suspenders notch fullscreen — code sets
+             LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS but MIUI may ignore it;
+             the theme attribute is harder to override. -->
+        <item name="android:windowLayoutInDisplayCutoutMode">always</item>
+        <item name="android:windowTranslucentStatus">false</item>
+        <item name="android:windowTranslucentNavigation">false</item>
     </style>
 
     <!-- v5.1: settings strip chip buttons (FlowPlay-style player). -->
