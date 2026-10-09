@@ -75,7 +75,7 @@ class PlayerActivity : AppCompatActivity() {
     // v5.3: drawers (channels + settings), PiP.
     private var drawerOpen: String? = null // "channels", "settings", or null
     private val drawerChannelAdapter = RowAdapter { item -> onDrawerChannelClick(item.id) }
-    private val drawerGenreAdapter = RowAdapter { item -> onDrawerGenreClick(item.id) }
+    private val drawerGenreAdapter = GenreChipAdapter { item -> onDrawerGenreClick(item.id) }
     private val drawerSettingsAdapter = RowAdapter { item -> onDrawerSettingClick(item.id) }
     private var drawerGenres: List<StalkerApi.Genre> = emptyList()
     private var drawerChannels: List<Channel> = emptyList()
