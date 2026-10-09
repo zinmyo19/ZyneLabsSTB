@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v6.3-b: new strings for the reorganized Settings screen only. -->
+<resources>
+    <string name="debug_copied">Debug info copied</string>
+    <string name="cap_reset">Connection attempts reset</string>
+    <string name="connection_reset">Connection reset</string>
+    <string name="provider_info_name">Name</string>
+    <string name="provider_info_type">Type</string>
+    <string name="provider_info_expires">Expires</string>
+    <string name="provider_info_channels">Channels</string>
+    <string name="provider_info_detail">Detail</string>
+</resources>
