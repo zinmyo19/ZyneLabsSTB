@@ -163,9 +163,18 @@ class M3uSource(
         entries?.let { return it }
         val text = withContext(Dispatchers.IO) {
             if (provider.type == ProviderStore.TYPE_M3U_FILE) {
-                appCtx.contentResolver.openInputStream(Uri.parse(provider.filePath))
-                    ?.bufferedReader()?.readText()
-                    ?: throw StalkerApi.StalkerException("Cannot read M3U file")
+                try {
+                    appCtx.contentResolver.openInputStream(Uri.parse(provider.filePath))
+                        ?.bufferedReader()?.readText()
+                        ?: throw StalkerApi.StalkerException("Cannot read M3U file")
+                } catch (e: SecurityException) {
+                    // v6.3.1: URI permission lost (e.g. file picked with the old
+                    // GetContent picker, or permission revoked) — tell the user
+                    // to re-pick the file instead of a cryptic Permission Denial.
+                    throw StalkerApi.StalkerException(
+                        "Lost access to the M3U file — open Providers, edit it and choose the file again"
+                    )
+                }
             } else {
                 val req = Request.Builder()
                     .url(provider.url)
