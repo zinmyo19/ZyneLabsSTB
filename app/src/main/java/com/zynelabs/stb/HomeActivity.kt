@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -79,6 +80,21 @@ class HomeActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // v6.3.14: provider sanity — if the saved active id points to a
+        // provider that no longer exists (deleted/corrupted DB), clear it
+        // so the app prompts for a valid provider instead of silently
+        // using the wrong source type (e.g. Stalker for an M3U provider).
+        val activeId = ProviderStore.getActiveId(this)
+        if (activeId.isNotBlank() && ProviderStore.get(this, activeId) == null) {
+            Log.w(
+                "HomeActivity",
+                "stale active provider id=$activeId — clearing"
+            )
+            ProviderStore.setActive(this, "")
+            SourceManager.reset()
+        }
+
         binding = ActivityHomeBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
