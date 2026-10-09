@@ -349,11 +349,10 @@
         android:padding="10dp"
         android:visibility="gone">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="🔊"
-            android:textSize="20sp" />
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:src="@drawable/ic_volume" />
 
         <ProgressBar
             android:id="@+id/volumeProgress"
@@ -381,11 +380,10 @@
         android:padding="10dp"
         android:visibility="gone">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="☀"
-            android:textSize="20sp" />
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:src="@drawable/ic_brightness" />
 
         <ProgressBar
             android:id="@+id/brightnessProgress"
