@@ -31,6 +31,23 @@
             android:layout_height="match_parent"
             android:scaleType="centerCrop"
             android:visibility="gone" />
+
+        <!-- v6.3: quality badge (4K/FHD/HD/SD), top-end of the logo tile. -->
+        <TextView
+            android:id="@+id/tvQuality"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:layout_margin="6dp"
+            android:background="#99000000"
+            android:paddingStart="6dp"
+            android:paddingTop="2dp"
+            android:paddingEnd="6dp"
+            android:paddingBottom="2dp"
+            android:textColor="@color/gold"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
     </FrameLayout>
 
     <TextView
