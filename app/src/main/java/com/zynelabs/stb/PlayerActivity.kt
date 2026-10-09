@@ -505,7 +505,14 @@ class PlayerActivity : AppCompatActivity() {
                         highlight = it.id == currentId
                     )
                 }
-                drawerChannelAdapter.submitList(items)
+                drawerChannelAdapter.submitList(items) {
+                    // v6.3.3: auto-scroll to the currently-playing channel
+                    // (FlowPlay/ZyneLabs pattern) — highlight alone isn't enough.
+                    val pos = items.indexOfFirst { it.id == currentId }
+                    if (pos >= 0) {
+                        binding.drawerChannelList.scrollToPosition(pos)
+                    }
+                }
             } catch (e: Exception) {
                 drawerChannelAdapter.submitList(emptyList())
             } finally {
