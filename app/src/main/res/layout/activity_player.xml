@@ -86,6 +86,20 @@
             android:textColor="@color/gold"
             android:textSize="13sp" />
 
+        <!-- v6.3: info button — channel/quality/provider/stream dialog. -->
+        <Button
+            android:id="@+id/btnInfo"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/nav_item_selector"
+            android:focusable="true"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:text="@string/info_button"
+            android:textColor="@color/gold"
+            android:textSize="13sp" />
+
         <ImageButton
             android:id="@+id/btnPip"
             android:layout_width="48dp"
