@@ -12,6 +12,7 @@ import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.zynelabs.stb.databinding.ActivityListBinding
+import kotlinx.coroutines.launch
 
 /**
  * Settings screen (STBEmu-style): aspect ratio, media player,
