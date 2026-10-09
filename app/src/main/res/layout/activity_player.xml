@@ -10,6 +10,7 @@
      - Volume slider on the RIGHT edge, brightness on the LEFT edge.
      All views D-pad focusable; BACK dismisses overlays first. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/playerRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
