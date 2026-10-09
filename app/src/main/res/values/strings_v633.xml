@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- v6.3.3 strings — English-only UI. -->
+
+    <!-- Part A: QR pairing as a provider type. -->
+    <string name="provider_qr_hint">This device will show a QR code. Scan it with your phone, enter the playlist on the web page, and the provider is added here automatically.</string>
+
+    <!-- Part B: FlowPlay-style player info box. -->
+    <string name="player_channel_badge">Channel %1$s</string>
+    <string name="player_no_schedule">No schedule information</string>
+    <string name="player_drawer_provider">Provider: %1$s</string>
+    <string name="player_action_rec">REC</string>
+    <string name="player_action_info">info</string>
+    <string name="player_action_epg">EPG</string>
+    <string name="player_strip_subs_on">Subs: On</string>
+    <string name="player_strip_subs_off">Subs: Off</string>
+</resources>
