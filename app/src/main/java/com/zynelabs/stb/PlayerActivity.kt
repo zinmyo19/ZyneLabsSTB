@@ -112,10 +112,12 @@ class PlayerActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // v6.3.3: true edge-to-edge — video + UI draw BEHIND the camera
-        // notch/cutout (SHORT_EDGES), immersive sticky.
+        // notch/cutout, immersive sticky.
+        // v6.3.12: ALWAYS (not SHORT_EDGES) — in landscape the notch sits on
+        // a LONG edge, so SHORT_EDGES never covered it.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             window.attributes.layoutInDisplayCutoutMode =
-                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
         }
         binding = ActivityPlayerBinding.inflate(layoutInflater)
         setContentView(binding.root)
