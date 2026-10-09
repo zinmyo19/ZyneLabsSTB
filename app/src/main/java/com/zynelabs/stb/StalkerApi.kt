@@ -328,6 +328,26 @@ class StalkerApi(
         private set
 
     /**
+     * v5.8: LAST itv/get_ordered_list diagnostics — updated on EVERY
+     * call, not just the first validation one. The empty-list bug (stale
+     * cached session → HTTP 200 + empty data, no auth error) is diagnosed
+     * from the exact wire shape: URL (token redacted), HTTP code, body
+     * length, first 200 chars. Shown in Copy Debug Info.
+     */
+    @Volatile var debugLastListUrl: String? = null
+        private set
+    @Volatile var debugLastListHttpCode: Int? = null
+        private set
+    @Volatile var debugLastListBodyLen: Int = 0
+        private set
+    @Volatile var debugLastListBodyHead: String? = null
+        private set
+
+    /** v5.8: redacts a token= query param (TOKEN_PARAM auth) for logs. */
+    private fun redactTokenParam(url: String): String =
+        url.replace(Regex("([?&]token=)[^&]*"), "$1***")
+
+    /**
      * v4.2: counts handshake() calls on this instance (successful or not).
      * Shown in Copy Debug Info — the v4.1 ladder did up to 7 handshakes per
      * connect, which likely triggered portal rate-limiting; v4.2 caps it
@@ -476,6 +496,14 @@ class StalkerApi(
         sb.appendLine("Headers: ${debugProfileHeaders ?: "(none yet)"}")
         sb.appendLine("HTTP code: ${debugProfileHttpCode?.toString() ?: "(none yet)"}")
         sb.appendLine("Response (500 chars): ${debugProfileBody ?: "(none yet)"}")
+        sb.appendLine()
+        // v5.8: last get_ordered_list wire shape — the empty-list bug
+        // (stale cached session → 200 + empty data) is diagnosed here.
+        sb.appendLine("Last get_ordered_list:")
+        sb.appendLine("URL: ${debugLastListUrl ?: "(none yet)"}")
+        sb.appendLine("HTTP code: ${debugLastListHttpCode?.toString() ?: "(none yet)"}")
+        sb.appendLine("Body length: $debugLastListBodyLen")
+        sb.appendLine("Body (200 chars): ${debugLastListBodyHead ?: "(none yet)"}")
         return sb.toString()
     }
 
@@ -707,6 +735,16 @@ class StalkerApi(
                 debugProfileHttpCode = code
                 debugProfileBody = if (body.isBlank()) "(empty)"
                 else body.replace(Regex("\\s+"), " ").take(500)
+            }
+            // v5.8: capture EVERY get_ordered_list (the last one wins) —
+            // the empty-list bug needs the exact wire shape of the call
+            // that returned nothing.
+            if (type == "itv" && action == "get_ordered_list") {
+                debugLastListUrl = redactTokenParam(url.toString())
+                debugLastListHttpCode = code
+                debugLastListBodyLen = body.length
+                debugLastListBodyHead = if (body.isBlank()) "(empty)"
+                else body.replace(Regex("\\s+"), " ").take(200)
             }
             if (!response.isSuccessful) {
                 throw StalkerException("Portal HTTP $code")
@@ -1494,6 +1532,15 @@ class StalkerApi(
     }
 
     /**
+     * v5.8: true when the current session was restored from cache rather
+     * than freshly handshook — the stale-token case behind the empty-list
+     * bug (portal answers 200 + empty data, no auth error).
+     */
+    private fun isCachedSession(): Boolean =
+        debugSessionSource == "cached (prefs)" ||
+            debugSessionSource == "reused (memory)"
+
+    /**
      * v2.8: Paginated channel loading via itv/get_ordered_list (OTT-style).
      * get_all_channels returns a single ~25MB JSON (20k+ channels) —
      * unreliable over mobile networks; the portal may truncate or kill huge
@@ -1546,6 +1593,46 @@ class StalkerApi(
                 finalResults = batch.map { p ->
                     async { fetchChannelPage(p, genreId) }
                 }.awaitAll()
+                // v5.8: page-1 STILL empty on a CACHED session → the token
+                // is likely stale server-side, but the portal answered
+                // HTTP 200 + empty data (no auth error), so withSession's
+                // self-healing never fired. Validate the session: if it's
+                // proven dead, clear it, do ONE fresh handshake
+                // (cap-checked via handshakeIfStale), and retry page 1
+                // once. Bounded: max 1 extra handshake per call, only
+                // when the session came from cache. If validation
+                // succeeds, the portal genuinely has no data — return empty.
+                if (finalResults.all { it.raw.isEmpty() } && isCachedSession()) {
+                    android.util.Log.w(
+                        "StalkerApi",
+                        "v5.8: page-1 empty on cached session " +
+                            "($debugSessionSource) — validating session"
+                    )
+                    var sessionDead = false
+                    try {
+                        validateSessionOnce()
+                    } catch (e: StalkerException) {
+                        if (isAuthFailure(e)) sessionDead = true else throw e
+                    }
+                    if (sessionDead) {
+                        android.util.Log.w(
+                            "StalkerApi",
+                            "v5.8: cached session is dead — clearing, one " +
+                                "fresh handshake (cap-checked), retry page 1"
+                        )
+                        sessionStore.clear()
+                        token = null
+                        lastHandshakeToken = null
+                        // Cap-checked: throws "Too many connection
+                        // attempts" (NOT an auth failure) — propagates to UI.
+                        handshakeIfStale(null, force = true)
+                        debugSessionSource = "fresh (re-handshake)"
+                        persistSession()
+                        finalResults = batch.map { p ->
+                            async { fetchChannelPage(p, genreId) }
+                        }.awaitAll()
+                    }
+                }
             }
             for (res in finalResults) {
                 filteredAll.addAll(res.filtered)
