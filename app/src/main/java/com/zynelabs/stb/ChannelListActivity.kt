@@ -77,9 +77,15 @@ class ChannelListActivity : AppCompatActivity() {
         binding.tvTitle.text = intent.getStringExtra(EXTRA_GENRE_TITLE)
             .orEmpty().ifBlank { getString(R.string.all_channels) }
 
+        // v6.3: don't show another provider's (or no provider's) channels.
+        if (!SourceManager.hasProvider(this)) {
+            binding.progressBar.isVisible = false
+            showError(getString(R.string.add_provider_hint))
+            return
+        }
         lifecycleScope.launch {
             try {
-                val api = StalkerSession.get(this@ChannelListActivity)
+                val api = SourceManager.get(this@ChannelListActivity)
                 val genreId = intent.getStringExtra(EXTRA_GENRE_ID)
                 // v5.3: FULL pagination — loops pages until an empty page,
                 // no artificial cap, so all 21k channels load (fixes the
@@ -129,7 +135,7 @@ class ChannelListActivity : AppCompatActivity() {
         epgJob = lifecycleScope.launch {
             delay(350) // debounce fast D-pad scrolling
             try {
-                val api = StalkerSession.get(this@ChannelListActivity)
+                val api = SourceManager.get(this@ChannelListActivity)
                 val programs = api.getEpg(channel.id, todayString())
                 if (programs.isEmpty()) {
                     binding.tvEpgNow.text = getString(R.string.epg_none)
@@ -209,6 +215,10 @@ class ChannelListActivity : AppCompatActivity() {
                 binding.tvName.text = channel.name.ifBlank {
                     binding.root.context.getString(R.string.unknown_channel)
                 }
+                // v6.3: quality badge, hidden when the name carries none.
+                val q = channel.quality
+                binding.tvQuality.text = q
+                binding.tvQuality.isVisible = q.isNotEmpty()
             }
         }
 
