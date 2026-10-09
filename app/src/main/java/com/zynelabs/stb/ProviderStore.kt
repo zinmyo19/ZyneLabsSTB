@@ -6,16 +6,33 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
-/** A saved Stalker portal (URL + box MAC). */
-data class Provider(val id: String, val name: String, val url: String, val mac: String)
+/**
+ * A saved playlist provider.
+ * v6.3: four types — Stalker portal (MAC), M3U link, M3U file, Xtream login.
+ */
+data class Provider(
+    val id: String,
+    val name: String,
+    val url: String,
+    val mac: String,
+    val type: String = ProviderStore.TYPE_STALKER,
+    val username: String = "",
+    val password: String = "",
+    val filePath: String = ""
+)
 
 /**
  * Saved provider list, backed by SharedPreferences ("stb_providers").
- * Lets the user keep several portals and switch without clearing app data.
+ * Lets the user keep several providers and switch without clearing app data.
  * On first access the list is seeded from the legacy single-provider prefs
  * ("portal_url"/"portal_mac") when present.
  */
 object ProviderStore {
+
+    const val TYPE_STALKER = "stalker"
+    const val TYPE_M3U_URL = "m3u_url"
+    const val TYPE_M3U_FILE = "m3u_file"
+    const val TYPE_XTREAM = "xtream"
 
     private const val FILE = "stb_providers"
     private const val KEY = "providers"
@@ -35,9 +52,15 @@ object ProviderStore {
                     id = o.optString("id"),
                     name = o.optString("name"),
                     url = o.optString("url"),
-                    mac = o.optString("mac")
+                    mac = o.optString("mac"),
+                    type = o.optString("type").ifBlank { TYPE_STALKER },
+                    username = o.optString("username"),
+                    password = o.optString("password"),
+                    filePath = o.optString("filePath")
                 )
-                if (p.id.isNotBlank() && p.url.isNotBlank()) out.add(p)
+                if (p.id.isNotBlank() && (p.url.isNotBlank() || p.filePath.isNotBlank())) {
+                    out.add(p)
+                }
             }
         } catch (_: Exception) {
             // Corrupt JSON -> treat as empty.
@@ -79,19 +102,35 @@ object ProviderStore {
 
     /**
      * v5.6: push the active provider into Prefs (portal_url/mac) and
-     * drop the cached StalkerApi session so the next call reconnects.
+     * drop the cached sessions so the next call reconnects.
+     * v6.3: type-aware — only Stalker providers touch Prefs; every
+     * switch drops the unified source cache too.
      * Returns false when no provider is saved.
      */
     fun applyActive(ctx: Context): Boolean {
         val p = getActive(ctx) ?: return false
-        Prefs.save(ctx, p.url, p.mac)
+        if (p.type == TYPE_STALKER) {
+            Prefs.save(ctx, p.url, p.mac)
+        }
         StalkerSession.reset()
+        SourceManager.reset()
         return true
     }
 
     /** Display name: explicit name, else the URL host (e.g. "brinoxel.cc"). */
     fun displayName(p: Provider): String =
-        p.name.ifBlank { hostOf(p.url) }.ifBlank { p.url }
+        p.name.ifBlank { hostOf(p.url) }.ifBlank { p.url }.ifBlank { typeLabel(p) }
+
+    /** v6.3: short English label for the provider type. */
+    fun typeLabel(p: Provider): String = when (p.type) {
+        TYPE_XTREAM -> "Xtream"
+        TYPE_M3U_URL -> "M3U link"
+        TYPE_M3U_FILE -> "M3U file"
+        else -> "Stalker"
+    }
+
+    /** v6.3: does this provider need a network login? (M3U file is offline.) */
+    fun needsNetwork(p: Provider): Boolean = p.type != TYPE_M3U_FILE
 
     fun newId(): String = UUID.randomUUID().toString()
 
@@ -110,6 +149,10 @@ object ProviderStore {
                     .put("name", p.name)
                     .put("url", p.url)
                     .put("mac", p.mac)
+                    .put("type", p.type)
+                    .put("username", p.username)
+                    .put("password", p.password)
+                    .put("filePath", p.filePath)
             )
         }
         prefs(ctx).edit().putString(KEY, arr.toString()).apply()
