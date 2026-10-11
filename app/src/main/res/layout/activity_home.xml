@@ -170,7 +170,8 @@
                     android:layout_marginBottom="18dp"
                     android:background="@drawable/banner_bg"
                     android:clickable="true"
-                    android:focusable="true">
+                    android:focusable="true"
+                    android:nextFocusUp="@+id/btnProvider">
 
                     <LinearLayout
                         android:layout_width="match_parent"
