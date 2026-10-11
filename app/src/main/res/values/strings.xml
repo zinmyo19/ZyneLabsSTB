@@ -94,6 +94,12 @@
 
     <string name="setting_aspect">Aspect ratio</string>
     <string name="setting_player">Media player</string>
+    <!-- v6.3.19: TV OTT-style menu items -->
+    <string name="tv_menu_channels">Channels</string>
+    <string name="tv_menu_guide">TV Guide</string>
+    <string name="tv_menu_aspect">Aspect ratio</string>
+    <string name="tv_menu_info">Info</string>
+    <string name="tv_menu_settings">Settings</string>
     <string name="player_exo">ExoPlayer</string>
     <string name="setting_subtitles">Subtitles</string>
     <string name="setting_audio_lang">Audio language</string>
