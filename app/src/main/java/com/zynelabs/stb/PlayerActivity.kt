@@ -169,6 +169,12 @@ class PlayerActivity : AppCompatActivity() {
         binding.tvInfoName.text = binding.tvTitle.text
         updateInfoBoxBadges()
 
+        // v6.3.19: TV OTT-style — hide the small info-box action row on TV
+        // (too tiny to see focus). OK opens a clean menu instead.
+        if (isTvFocus()) {
+            binding.infoActionRow.isVisible = false
+        }
+
         // v6.3.3 top bar: back | title + LIVE | TV(channels) / lock / pip.
         binding.btnBack.setOnClickListener { finish() }
         binding.btnDrawerTv.setOnClickListener { openDrawer("channels"); bumpHideTimer() }
@@ -387,6 +393,12 @@ class PlayerActivity : AppCompatActivity() {
                                 isDescendantOf(f, binding.topBar) ||
                                 isDescendantOf(f, binding.infoBox))) {
                         return super.dispatchKeyEvent(event)
+                    }
+                    // v6.3.19: TV OTT-style — OK with hidden controls opens
+                    // the clean menu; phone keeps toggleControls().
+                    if (isTvFocus() && !binding.bottomControls.isVisible) {
+                        showTvMenu()
+                        return true
                     }
                     toggleControls()
                     return true
@@ -729,6 +741,40 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     /** v6.3: "info" dialog — channel, quality badge, provider, stream URL. */
+    /**
+     * v6.3.19: TV OTT-style clean menu — big D-pad-friendly items instead
+     * of the tiny info-box action row (hidden on TV).
+     */
+    private fun showTvMenu() {
+        val items = arrayOf(
+            getString(R.string.tv_menu_channels),
+            getString(R.string.tv_menu_guide),
+            getString(R.string.tv_menu_aspect),
+            getString(R.string.tv_menu_info),
+            getString(R.string.tv_menu_settings),
+        )
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(channelName.ifBlank { getString(R.string.unknown_channel) })
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> openDrawer("channels")
+                    1 -> startActivity(Intent(this, GuideActivity::class.java))
+                    2 -> cycleAspectRatio()
+                    3 -> showInfoDialog()
+                    4 -> openDrawer("settings")
+                }
+                bumpHideTimer()
+            }
+            .show()
+    }
+
+    /** v6.3.19: cycles aspect ratio (TV menu shortcut). */
+    private fun cycleAspectRatio() {
+        Prefs.cycleAspectRatio(this)
+        applyAspectRatio()
+        binding.btnAspect.text = Prefs.getAspectRatio(this)
+    }
+
     private fun showInfoDialog() {
         val quality = QualityBadge.fromName(channelName).ifBlank { "—" }
         val active = ProviderStore.getActive(this)
