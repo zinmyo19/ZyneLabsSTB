@@ -231,8 +231,10 @@
             android:textColor="@color/text_secondary"
             android:textSize="14sp" />
 
-        <!-- Row 3: action row — REC / info / EPG / favorite / gear. -->
+        <!-- Row 3: action row — REC / info / EPG / favorite / gear.
+             Hidden on TV (v6.3.19): OTT-style clean UI, OK shows menu. -->
         <LinearLayout
+            android:id="@+id/infoActionRow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
