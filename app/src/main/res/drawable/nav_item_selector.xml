@@ -1,15 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Sidebar / bottom-nav item: gold-tinted pill when focused (D-pad). -->
+<!-- v6.3.17: sidebar / bottom-nav item — teal stroke ring when focused (D-pad).
+     The old gold_tint fill (#2A2413) was nearly invisible on dark background. -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_focused="true">
         <shape android:shape="rectangle">
-            <solid android:color="@color/gold_tint" />
+            <solid android:color="#16303A" />
+            <stroke android:width="3dp" android:color="@color/teal" />
             <corners android:radius="10dp" />
         </shape>
     </item>
     <item android:state_pressed="true">
         <shape android:shape="rectangle">
-            <solid android:color="@color/gold_tint" />
+            <solid android:color="#16303A" />
+            <stroke android:width="3dp" android:color="@color/teal" />
             <corners android:radius="10dp" />
         </shape>
     </item>
