@@ -314,6 +314,10 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun hideControls() {
+        // v6.3.17: park D-pad focus on playerRoot BEFORE hiding, else focus
+        // drops to null when the focused button vanishes and the remote
+        // feels dead until something re-requests focus.
+        if (isTvFocus()) binding.playerRoot.requestFocus()
         binding.topBar.isVisible = false
         binding.infoBox.isVisible = false
         binding.bottomControls.isVisible = false
@@ -349,6 +353,14 @@ class PlayerActivity : AppCompatActivity() {
     /** Every D-pad key keeps the overlay alive (FlowPlay pattern). */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN) {
+            // v6.3.17: ignore key repeats for non-directional keys — holding
+            // OK/BACK/MENU fired repeats that flickered the overlay.
+            if (event.repeatCount > 0) {
+                when (event.keyCode) {
+                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
+                    KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_MENU -> return true
+                }
+            }
             // v5.5: locked — any key unlocks (BACK included).
             if (locked) {
                 setLocked(false)
@@ -364,11 +376,20 @@ class PlayerActivity : AppCompatActivity() {
                     }
                 }
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                    if (!isDrawerOpen()) {
-                        toggleControls()
-                        return true
+                    // v6.3.17: if D-pad focus sits on a transport/top-bar
+                    // button, let OK activate it instead of toggling controls.
+                    if (isDrawerOpen()) {
+                        bumpHideTimer()
+                        return super.dispatchKeyEvent(event)
                     }
-                    bumpHideTimer()
+                    val f = currentFocus
+                    if (f != null && (isDescendantOf(f, binding.bottomControls) ||
+                                isDescendantOf(f, binding.topBar) ||
+                                isDescendantOf(f, binding.infoBox))) {
+                        return super.dispatchKeyEvent(event)
+                    }
+                    toggleControls()
+                    return true
                 }
                 // v5.6: UP = info box (Dominic: D-pad arrows during playback).
                 KeyEvent.KEYCODE_DPAD_UP -> {
@@ -396,17 +417,13 @@ class PlayerActivity : AppCompatActivity() {
                     bumpHideTimer()
                 }
                 KeyEvent.KEYCODE_DPAD_DOWN -> {
-                    // v5.3: DOWN opens the channels drawer (standing
-                    // TV-remote scheme) — unless focus is inside the bottom
-                    // controls where DOWN navigates to the transport row.
+                    // v6.3.17: DOWN always opens the channels drawer
+                    // (standing TV-remote scheme). The old inBottom carve-out
+                    // made this unreachable: showControls() parks focus on
+                    // btnPlayPause (inside bottomControls), so every later
+                    // DOWN fell through and the drawer never opened.
                     if (isDrawerOpen()) return super.dispatchKeyEvent(event)
-                    if (!binding.bottomControls.isVisible) {
-                        showControls()
-                        return true
-                    }
-                    val focused = currentFocus
-                    val inBottom = focused != null && isDescendantOf(focused, binding.bottomControls)
-                    if (!inBottom && !inPip) {
+                    if (!inPip) {
                         openDrawer("channels")
                         return true
                     }
