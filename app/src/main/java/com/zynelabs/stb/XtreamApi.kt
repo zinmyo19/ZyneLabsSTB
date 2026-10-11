@@ -116,4 +116,24 @@ class XtreamApi(server: String, val username: String, private val password: Stri
         val ext = container.ifBlank { "mp4" }
         return "$baseUrl/series/$username/$password/$streamId.$ext"
     }
+
+    // ------------------------------------------------------- EPG (v6.3.17)
+    /** Short EPG for a live stream via get_short_epg. Returns raw entries. */
+    suspend fun shortEpg(streamId: String): List<JSONObject> {
+        val json = getJson(mapOf("action" to "get_short_epg", "stream_id" to streamId))
+        val listings = json.optJSONObject("epg_listings")
+        if (listings == null) return emptyList()
+        val out = mutableListOf<JSONObject>()
+        val keys = listings.keys()
+        while (keys.hasNext()) {
+            val arr = listings.optJSONArray(keys.next() as String)
+            if (arr != null) {
+                for (i in 0 until arr.length()) {
+                    arr.optJSONObject(i)?.let { out.add(it) }
+                }
+            }
+        }
+        // Sort by start timestamp.
+        return out.sortedBy { it.optString("start_timestamp").toLongOrNull() ?: 0L }
+    }
 }
