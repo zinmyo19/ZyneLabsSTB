@@ -346,7 +346,19 @@ class XtreamSource(private val provider: Provider) : PlaylistSource {
     override suspend fun getProfile(): JSONObject = xtream.userInfo()
 
     override suspend fun getEpg(chId: String, date: String): List<StalkerApi.EpgProgram> =
-        emptyList()
+        try {
+            // v6.3.17: Xtream short EPG via get_short_epg (chId = stream_id).
+            xtream.shortEpg(chId).map {
+                StalkerApi.EpgProgram(
+                    name = it.optString("title"),
+                    start = it.optString("start"),
+                    end = it.optString("end"),
+                    descr = it.optString("description")
+                )
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
 
     override suspend fun getVodCategories(vodType: String): List<StalkerApi.VodCategory> {
         val cats = if (vodType == "series") xtream.seriesCategories() else xtream.vodCategories()
