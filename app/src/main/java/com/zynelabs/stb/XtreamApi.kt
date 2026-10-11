@@ -25,7 +25,7 @@ class XtreamApi(server: String, val username: String, private val password: Stri
 
     private fun enc(s: String): String = URLEncoder.encode(s, "UTF-8")
 
-    private suspend fun getJson(params: Map<String, String>): JSONObject =
+    private suspend fun getBody(params: Map<String, String>): String =
         withContext(Dispatchers.IO) {
             val sb = StringBuilder(baseUrl)
                 .append("/player_api.php?username=").append(enc(username))
@@ -42,9 +42,31 @@ class XtreamApi(server: String, val username: String, private val password: Stri
                 if (!resp.isSuccessful) {
                     throw StalkerApi.StalkerException("Xtream HTTP ${resp.code}")
                 }
-                JSONObject(body)
+                body
             }
         }
+
+    private suspend fun getJson(params: Map<String, String>): JSONObject =
+        JSONObject(getBody(params))
+
+    /**
+     * v6.3.18: some providers return a bare JSON array for list actions
+     * instead of {"key": [...]} — handle both shapes.
+     */
+    private suspend fun getArray(params: Map<String, String>, key: String): List<JSONObject> {
+        val body = getBody(params).trim()
+        val arr: JSONArray? = if (body.startsWith("[")) {
+            try { JSONArray(body) } catch (e: Exception) { null }
+        } else {
+            try { JSONObject(body).optJSONArray(key) } catch (e: Exception) { null }
+        }
+        if (arr == null) return emptyList()
+        val out = ArrayList<JSONObject>(arr.length())
+        for (i in 0 until arr.length()) {
+            arr.optJSONObject(i)?.let { out.add(it) }
+        }
+        return out
+    }
 
     private fun JSONArray?.orEmptyList(): List<JSONObject> {
         if (this == null) return emptyList()
@@ -69,33 +91,30 @@ class XtreamApi(server: String, val username: String, private val password: Stri
     }
 
     suspend fun liveCategories(): List<JSONObject> =
-        getJson(mapOf("action" to "get_live_categories"))
-            .optJSONArray("categories").orEmptyList()
+        getArray(mapOf("action" to "get_live_categories"), "categories")
 
     suspend fun liveStreams(categoryId: String? = null): List<JSONObject> {
         val p = mutableMapOf("action" to "get_live_streams")
         if (!categoryId.isNullOrBlank()) p["category_id"] = categoryId
-        return getJson(p).optJSONArray("streams").orEmptyList()
+        return getArray(p, "streams")
     }
 
     suspend fun vodCategories(): List<JSONObject> =
-        getJson(mapOf("action" to "get_vod_categories"))
-            .optJSONArray("categories").orEmptyList()
+        getArray(mapOf("action" to "get_vod_categories"), "categories")
 
     suspend fun seriesCategories(): List<JSONObject> =
-        getJson(mapOf("action" to "get_series_categories"))
-            .optJSONArray("categories").orEmptyList()
+        getArray(mapOf("action" to "get_series_categories"), "categories")
 
     suspend fun vodStreams(categoryId: String? = null): List<JSONObject> {
         val p = mutableMapOf("action" to "get_vod_streams")
         if (!categoryId.isNullOrBlank()) p["category_id"] = categoryId
-        return getJson(p).optJSONArray("streams").orEmptyList()
+        return getArray(p, "streams")
     }
 
     suspend fun seriesList(categoryId: String? = null): List<JSONObject> {
         val p = mutableMapOf("action" to "get_series")
         if (!categoryId.isNullOrBlank()) p["category_id"] = categoryId
-        return getJson(p).optJSONArray("series").orEmptyList()
+        return getArray(p, "series")
     }
 
     /** Full series detail (seasons → episodes). */
