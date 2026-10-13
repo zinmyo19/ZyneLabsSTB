@@ -60,4 +60,4 @@ app/src/main/java/com/zynelabs/stb/
 
 ## License
 
-MIT — see LICENSE (to be added).
+Apache 2.0 — see LICENSE.
