@@ -25,6 +25,15 @@ object ListCache {
     private data class Entry(val json: String, val time: Long)
     private val memory = mutableMapOf<String, Entry>()
 
+    // Typed in-memory tier for channel lists. Avoids re-parsing the JSON of a
+    // 20k-channel list every time the user re-enters a category.
+    private data class ChEntry(val list: List<Channel>, val time: Long)
+    private val channelMem = mutableMapOf<String, ChEntry>()
+
+    // Only small lists are also written to disk (SharedPreferences loads the
+    // whole file into RAM, so huge lists stay memory-only).
+    private const val CH_PERSIST_MAX = 1500
+
     @Synchronized
     fun put(ctx: Context, key: String, json: String, persist: Boolean = false) {
         val e = Entry(json, System.currentTimeMillis())
@@ -54,11 +63,45 @@ object ListCache {
     @Synchronized
     fun invalidate(key: String) {
         memory.remove(key)
+        channelMem.remove(key)
     }
 
     @Synchronized
     fun invalidateAll() {
         memory.clear()
+        channelMem.clear()
+    }
+
+    /** Stores a channel list (memory always, disk only when small). */
+    @Synchronized
+    fun putChannels(ctx: Context, key: String, list: List<Channel>) {
+        channelMem[key] = ChEntry(list, System.currentTimeMillis())
+        if (list.size <= CH_PERSIST_MAX) {
+            try {
+                put(ctx, key, channelsToJson(list), persist = true)
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    /**
+     * Returns (list, isFresh) or null when nothing is cached.
+     * isFresh = younger than TTL_MS. A stale list is still returned so the
+     * caller can show it instantly and refresh in the background.
+     */
+    @Synchronized
+    fun getChannels(ctx: Context, key: String): Pair<List<Channel>, Boolean>? {
+        val now = System.currentTimeMillis()
+        channelMem[key]?.let { return it.list to (now - it.time < TTL_MS) }
+        val e = memory[key] ?: readDisk(ctx, key)?.also { memory[key] = it }
+            ?: return null
+        val list = try {
+            channelsFromJson(e.json)
+        } catch (_: Exception) {
+            return null
+        }
+        channelMem[key] = ChEntry(list, e.time)
+        return list to (now - e.time < TTL_MS)
     }
 
     /**
@@ -69,6 +112,7 @@ object ListCache {
     @Synchronized
     fun clearDisk(ctx: Context) {
         memory.clear()
+        channelMem.clear()
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
     }
 

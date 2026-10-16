@@ -71,9 +71,11 @@ class PlayerActivity : AppCompatActivity() {
 
     // v5.3: drawers (channels + settings), PiP.
     private var drawerOpen: String? = null // "channels", "settings", or null
-    private val drawerChannelAdapter = RowAdapter { item -> onDrawerChannelClick(item.id) }
+    private val drawerChannelAdapter =
+        RowAdapter(true) { item -> onDrawerChannelClick(item.id) }
     private val drawerGenreAdapter = GenreChipAdapter { item -> onDrawerGenreClick(item.id) }
-    private val drawerSettingsAdapter = RowAdapter { item -> onDrawerSettingClick(item.id) }
+    private val drawerSettingsAdapter =
+        RowAdapter(true) { item -> onDrawerSettingClick(item.id) }
     private var drawerGenres: List<StalkerApi.Genre> = emptyList()
     private var drawerChannels: List<Channel> = emptyList()
     private var drawerGenreId: String? = null
@@ -310,13 +312,14 @@ class PlayerActivity : AppCompatActivity() {
 
     // ------------------------------------------------------------ controls
 
+    // v6.3.27: bottom transport pill removed entirely (Dominic: nothing
+    // at center bottom — it looked messy). showControls only shows the
+    // top bar + info box now; the pill is never shown.
     private fun showControls() {
         binding.topBar.isVisible = true
         binding.infoBox.isVisible = true
-        binding.bottomControls.isVisible = true
         bumpHideTimer()
         uiHandler.post(progressRunnable)
-        if (isTvFocus()) binding.btnPlayPause.requestFocus()
     }
 
     private fun hideControls() {
@@ -333,7 +336,7 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun toggleControls() {
-        if (binding.bottomControls.isVisible) hideControls() else showControls()
+        if (binding.topBar.isVisible) hideControls() else showControls()
     }
 
     /**
@@ -396,7 +399,7 @@ class PlayerActivity : AppCompatActivity() {
                     }
                     // v6.3.19: TV OTT-style — OK with hidden controls opens
                     // the clean menu; phone keeps toggleControls().
-                    if (isTvFocus() && !binding.bottomControls.isVisible) {
+                    if (isTvFocus() && !binding.topBar.isVisible) {
                         showTvMenu()
                         return true
                     }
@@ -415,14 +418,14 @@ class PlayerActivity : AppCompatActivity() {
                 }
                 // v5.6: LEFT/RIGHT = prev/next channel when controls hidden.
                 KeyEvent.KEYCODE_DPAD_LEFT -> {
-                    if (!binding.bottomControls.isVisible && !isDrawerOpen()) {
+                    if (!binding.topBar.isVisible && !isDrawerOpen()) {
                         prevChannel()
                         return true
                     }
                     bumpHideTimer()
                 }
                 KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    if (!binding.bottomControls.isVisible && !isDrawerOpen()) {
+                    if (!binding.topBar.isVisible && !isDrawerOpen()) {
                         nextChannel()
                         return true
                     }
@@ -503,6 +506,10 @@ class PlayerActivity : AppCompatActivity() {
             binding.drawerSettingsList.requestFocus()
         }
         uiHandler.removeCallbacks(hideRunnable) // keep controls state while drawer open
+        // v6.3.26: hide the bottom transport pill while a drawer is open —
+        // the drawer IS the navigation UI, and the pill froze visible
+        // under/left of the drawer (controls timer is cancelled above).
+        binding.bottomControls.isVisible = false
     }
 
     private fun closeDrawers() {

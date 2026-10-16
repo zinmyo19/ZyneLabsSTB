@@ -41,7 +41,7 @@ class CategoriesActivity : AppCompatActivity() {
         applyCatView()
         updateToggleLabel()
         binding.recyclerView.adapter = adapter
-        binding.btnRetry.setOnClickListener { loadGenres() }
+        binding.btnRetry.setOnClickListener { loadGenres(forceRefresh = true) }
         binding.btnBack.setOnClickListener { finish() }
         // v6.3: grid/list view toggle.
         binding.btnViewToggle.setOnClickListener { toggleCatView() }
@@ -80,8 +80,11 @@ class CategoriesActivity : AppCompatActivity() {
         )
     }
 
-    private fun loadGenres() {
-        binding.progressBar.isVisible = true
+    /**
+     * Cache-first load (stale-while-revalidate): cached categories show
+     * instantly; the network refresh runs silently when the cache is stale.
+     */
+    private fun loadGenres(forceRefresh: Boolean = false) {
         binding.tvError.isVisible = false
         binding.btnRetry.isVisible = false
         // v6.3: don't show another provider's (or no provider's) categories.
@@ -91,35 +94,63 @@ class CategoriesActivity : AppCompatActivity() {
             binding.tvError.isVisible = true
             return
         }
+
+        val cacheKey = "cat_genres_${SourceManager.cacheKey(this)}"
+        val cachedJson = if (forceRefresh) null else ListCache.getStale(this, cacheKey)
+        var shown = false
+        if (cachedJson != null) {
+            try {
+                val g = ListCache.genresFromJson(cachedJson)
+                if (g.isNotEmpty()) {
+                    adapter.submitList(g)
+                    binding.recyclerView.requestFocus()
+                    shown = true
+                }
+            } catch (_: Exception) {
+            }
+        }
+        if (shown && ListCache.getFresh(this, cacheKey) != null) {
+            binding.progressBar.isVisible = false
+            return // fresh: no network
+        }
+        binding.progressBar.isVisible = !shown
+
         lifecycleScope.launch {
             try {
                 val api = SourceManager.get(this@CategoriesActivity)
                 val genres = api.getGenres()
                 if (genres.isEmpty()) {
-                    // v6.3.14: diagnostics — a stale/unknown-type provider
-                    // silently falling back to StalkerSource shows up here
-                    // as "No categories found". Log the provider so the
-                    // mismatch is visible in on-device logs.
-                    val ap = ProviderStore.getActive(this@CategoriesActivity)
-                    Log.w(
-                        "Categories",
-                        "empty genres: provider id=${ap?.id} " +
-                            "type='${ap?.type}' name='${ap?.name}' " +
-                            "url='${ap?.url}' filePath='${ap?.filePath}' " +
-                            "source=${api.javaClass.simpleName}"
-                    )
-                    binding.tvError.text = getString(R.string.error_no_categories)
-                    binding.tvError.isVisible = true
-                    binding.btnRetry.isVisible = true
+                    if (!shown) {
+                        // v6.3.14: diagnostics — see which provider/source
+                        // produced an empty list.
+                        val ap = ProviderStore.getActive(this@CategoriesActivity)
+                        Log.w(
+                            "Categories",
+                            "empty genres: provider id=${ap?.id} " +
+                                "type='${ap?.type}' name='${ap?.name}' " +
+                                "url='${ap?.url}' filePath='${ap?.filePath}' " +
+                                "source=${api.javaClass.simpleName}"
+                        )
+                        binding.tvError.text = getString(R.string.error_no_categories)
+                        binding.tvError.isVisible = true
+                        binding.btnRetry.isVisible = true
+                    }
                 } else {
-                    adapter.submitList(genres)
-                    binding.recyclerView.requestFocus()
+                    val json = ListCache.genresToJson(genres)
+                    ListCache.put(this@CategoriesActivity, cacheKey, json, persist = true)
+                    // Only touch the adapter when the list really changed.
+                    if (!shown || json != cachedJson) {
+                        adapter.submitList(genres)
+                        if (!shown) binding.recyclerView.requestFocus()
+                    }
                 }
             } catch (e: Exception) {
-                binding.tvError.text =
-                    getString(R.string.error_load_failed, e.message.orEmpty())
-                binding.tvError.isVisible = true
-                binding.btnRetry.isVisible = true
+                if (!shown) {
+                    binding.tvError.text =
+                        getString(R.string.error_load_failed, e.message.orEmpty())
+                    binding.tvError.isVisible = true
+                    binding.btnRetry.isVisible = true
+                }
             } finally {
                 binding.progressBar.isVisible = false
             }

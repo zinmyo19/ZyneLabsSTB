@@ -58,7 +58,7 @@ class ChannelListActivity : AppCompatActivity() {
 
         binding.recyclerView.layoutManager = LinearLayoutManager(this)
         binding.recyclerView.adapter = adapter
-        binding.btnRetry.setOnClickListener { loadChannels() }
+        binding.btnRetry.setOnClickListener { loadChannels(forceRefresh = true) }
         binding.btnGuide.setOnClickListener {
             startActivity(
                 Intent(this, GuideActivity::class.java)
@@ -73,13 +73,30 @@ class ChannelListActivity : AppCompatActivity() {
         loadChannels()
     }
 
-    private fun loadChannels() {
-        binding.progressBar.isVisible = true
+    private fun titleText(): String =
+        intent.getStringExtra(EXTRA_GENRE_TITLE)
+            .orEmpty().ifBlank { getString(R.string.all_channels) }
+
+    private fun showChannels(channels: List<Channel>) {
+        adapter.submitList(channels) {
+            if (channels.isNotEmpty()) {
+                binding.recyclerView.requestFocus()
+                loadEpgPanel(channels[0])
+            }
+        }
+    }
+
+    /**
+     * Cache-first load (stale-while-revalidate):
+     * - fresh cache  -> show instantly, no network
+     * - stale cache  -> show instantly, refresh silently in the background
+     * - no cache     -> full load with the progress counter
+     * [forceRefresh] (Retry button) skips the cache.
+     */
+    private fun loadChannels(forceRefresh: Boolean = false) {
         binding.tvError.isVisible = false
         binding.btnRetry.isVisible = false
-        // v5.3: show live load progress ("Loading… 1,240 channels").
-        binding.tvTitle.text = intent.getStringExtra(EXTRA_GENRE_TITLE)
-            .orEmpty().ifBlank { getString(R.string.all_channels) }
+        binding.tvTitle.text = titleText()
 
         // v6.3: don't show another provider's (or no provider's) channels.
         if (!SourceManager.hasProvider(this)) {
@@ -87,35 +104,56 @@ class ChannelListActivity : AppCompatActivity() {
             showError(getString(R.string.add_provider_hint))
             return
         }
+
+        val genreId = intent.getStringExtra(EXTRA_GENRE_ID)?.ifBlank { null }
+        val cacheKey = "ch_${SourceManager.cacheKey(this)}_${genreId ?: "all"}"
+
+        val cached = if (forceRefresh) null else ListCache.getChannels(this, cacheKey)
+        val silent = cached != null
+        if (cached != null) {
+            binding.progressBar.isVisible = false
+            showChannels(cached.first)
+            if (cached.second) return // fresh: no network at all
+        } else {
+            binding.progressBar.isVisible = true
+        }
+
         lifecycleScope.launch {
             try {
                 val api = SourceManager.get(this@ChannelListActivity)
-                val genreId = intent.getStringExtra(EXTRA_GENRE_ID)
                 // v5.3: FULL pagination — loops pages until an empty page,
-                // no artificial cap, so all 21k channels load (fixes the
-                // "only 98 channels" report vs OTT).
+                // no artificial cap, so all 21k channels load.
                 val channels = api.getChannelsPaginated(
-                    genreId = genreId?.ifBlank { null },
+                    genreId = genreId,
                     onProgress = { _, soFar ->
-                        binding.tvTitle.text = getString(
-                            R.string.loading_channels_count, soFar
-                        )
+                        if (!silent) {
+                            binding.tvTitle.text = getString(
+                                R.string.loading_channels_count, soFar
+                            )
+                        }
                     }
                 )
-                // Restore the real title once done.
-                binding.tvTitle.text = intent.getStringExtra(EXTRA_GENRE_TITLE)
-                    .orEmpty().ifBlank { getString(R.string.all_channels) }
-                adapter.submitList(channels) {
-                    if (channels.isNotEmpty()) {
-                        binding.recyclerView.requestFocus()
-                        loadEpgPanel(channels[0])
-                    }
+                binding.tvTitle.text = titleText()
+                if (channels.isNotEmpty()) {
+                    // Never cache an empty result (could be a portal throttle).
+                    ListCache.putChannels(this@ChannelListActivity, cacheKey, channels)
                 }
-                if (channels.isEmpty()) {
-                    showError(getString(R.string.error_no_channels))
+                if (!silent) {
+                    showChannels(channels)
+                    if (channels.isEmpty()) {
+                        showError(getString(R.string.error_no_channels))
+                    }
+                } else if (channels.isNotEmpty() && channels != adapter.currentList) {
+                    // Silent refresh: DiffUtil applies only the changes, and we
+                    // do not touch focus or the EPG panel under the user.
+                    adapter.submitList(channels)
                 }
             } catch (e: Exception) {
-                showError(getString(R.string.error_load_failed, e.message.orEmpty()))
+                binding.tvTitle.text = titleText()
+                // Silent refresh failed: keep showing the cached list.
+                if (!silent) {
+                    showError(getString(R.string.error_load_failed, e.message.orEmpty()))
+                }
             } finally {
                 binding.progressBar.isVisible = false
             }
